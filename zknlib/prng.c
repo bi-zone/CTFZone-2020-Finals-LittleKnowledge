@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,11 +64,17 @@ legender_PRNG_struct *initialize_PRNG(long module){
 
   // Initialize seed
   int randomData = open("/dev/urandom", O_RDONLY);
+  if (randomData==-1) return NULL;
   union {
     char myRandomData[8];
     long l;
   } randomDataUnion;
-  ssize_t result = read(randomData, randomDataUnion.myRandomData, sizeof randomDataUnion);
+  ssize_t accumulatedResult=0;
+  ssize_t result=0;
+  while ((accumulatedResult<sizeof(randomDataUnion)) && result !=-1){
+    result=read(randomData, randomDataUnion.myRandomData, sizeof(randomDataUnion) - accumulatedResult);
+    accumulatedResult+=result;
+  }
 
   // Create and fill the PRNG struct
   legender_PRNG_struct *legender_PRNG = malloc(sizeof(legender_PRNG_struct));
@@ -83,7 +91,7 @@ void destroy_PRNG(legender_PRNG_struct* legender_PRNG){
   free(legender_PRNG);
 }
 
-int main(int argc, char *argv[])
+/*int main(int argc, char *argv[])
 {
     long p;
     sscanf (argv[1],"%ld",&p);
@@ -99,4 +107,4 @@ int main(int argc, char *argv[])
 
     destroy_PRNG(legender_PRNG);
     return 0;
-}
+}*/

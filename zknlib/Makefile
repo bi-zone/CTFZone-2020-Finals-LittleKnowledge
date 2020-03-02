@@ -2,15 +2,15 @@ MKDIR_P = mkdir -p
 
 IDIR=include
 CC = gcc
-CFLAGS =-Wl,-z,relro,-z,now -Wall -Werror -fpic -I$(IDIR) -shared
+CFLAGS =-Wl,-z,relro,-z,now -Wall -Werror -fstack-protector-all -fpic -I$(IDIR) -shared -s -fvisibility=hidden
 
 
 ODIR=obj
 
-_DEPS = zkn.h
+_DEPS = zkn.h prng.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
-_OBJ = zkn.o
+_OBJ = zkn.o prng.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 $(ODIR)/%.o: %.c $(DEPS)

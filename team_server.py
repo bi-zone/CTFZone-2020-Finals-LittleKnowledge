@@ -7,37 +7,64 @@ from ctypes import *
 from support import recvMessage,sendMessage,TooMuchData
 (HOST,PORT)=('127.0.0.1',1337)
 ZKNLIBRARY_NAME='./libzkn.so'
+zknlib=0
+flag_storage={}
 def initializeZKNState():
-    pass
+    global zknlib
+    return zknlib.initializeZKNThread()
+def destroyZKNState(state):
+    global zknlib
+    zknlib.destroyZKNThread(state)
 
 def updateGraph(clientSocket):
+    #Choose Params
+    #Receive graph
+    #Receive graph sign
+    #Receive graph id
+    #Check graph norm
     pass
 
+def updateFlag(clientSocket):
+    #Receive flag
+    #Receive flag id
+    #Receive signature 
+    #Check signature
+    pass
 def initiateZKn(clientSocket):
+    #Choose Interactive/Parallel
+    #
     pass
 
 def handleConnection(clientSocket):
     zkn_state=initializeZKNState()
-    while True:
-        try:
-            command=recvMessage(clientSocket)
-            
-        except TooMuchData:
-            return
-        if command=='update_graph':
-            print ('Updating graph')
-            updateGraph(clientSocket)
-            continue
-        elif command=='initiate_zkn':
-            print ('Initiating ZKN')
-            initiateZKn(clientSocket)
-            continue
-        else:
-            print('Unknown command. Closing connection')
-            clientSocket.close()
-            break
-       
-    return
+    try:
+        while True:
+            try:
+                command=recvMessage(clientSocket)
+                
+            except TooMuchData:
+                return
+            if command=='update_graph':
+                print ('Updating graph')
+                updateGraph(clientSocket)
+                continue
+            elif command=='update_flag':
+                print ('Updating flag')
+                continue
+            elif command=='initiate_zkn':
+                print ('Initiating ZKN')
+                initiateZKn(clientSocket)
+                continue
+            else:
+                print('Unknown command. Closing connection')
+                clientSocket.close()
+                break
+        
+    except Exception as e:
+        destroyZKNState(zkn_state)
+        raise e
+   destroyZKNState(zkn_state)
+
 
 class ZKNLibNotFound(Exception):pass
 class ZKNLibNotALib(Exception):pass
@@ -50,7 +77,6 @@ def loadZKNLibrary():
     except OSError:
         raise ZKNLibNotALib
 
-    zknlib.test()
 
 def startServer():
     loadZKNLibrary()
