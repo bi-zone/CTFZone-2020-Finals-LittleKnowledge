@@ -6,7 +6,10 @@ Commands:
 + update_graph (Needed for the checker to update graph and flag)
 + initiate_zkn (Start Zero Knowledge Proof of Knowledge protocol)
 
+
 ## Libzkn
 Contains low-level functionality:
 + Graph function
 + Legendre PRNG
++ Order (submit commitment after bits)
++ RSA bleichenbacher's signature
