@@ -7,16 +7,21 @@ CFLAGS =-Wl,-z,relro,-z,now -Wall -Werror -fstack-protector-all -fpic -I$(IDIR) 
 
 ODIR=obj
 
-_DEPS = zkn.h prng.h
-DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
+_DEPS = zkn.h
+SUBDEPS=prng/prng.h
+DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS)) $(SUBDEPS)
 
-_OBJ = zkn.o prng.o
+
+_OBJ = zkn.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 $(ODIR)/%.o: %.c $(DEPS)
 	mkdir -p $(@D)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
+$(ODIR)/prng.o: prng/prng.c $(DEPS)
+	mkdir -p $(@D)
+	$(CC) -c -o $@ $< $(CFLAGS)
 libzkn.so: $(OBJ)
 	$(CC) -o $(ODIR)/$@ $^ $(CFLAGS) $(LIBS)
 

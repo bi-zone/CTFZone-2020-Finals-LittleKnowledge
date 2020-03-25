@@ -2,7 +2,7 @@
 #define zkn_h__
 #define DLL_PUBLIC __attribute__ ((visibility ("default")))
 #include <stdint.h>
-#include "prng.h"
+#include "../prng/prng.h"
 #define P 863615239139 // Prime for Legendre PRF
 typedef struct __ZKN_STATE{
   PLEGENDRE_PRNG  pprng_state; 
