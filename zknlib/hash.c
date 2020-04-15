@@ -36,7 +36,6 @@ unsigned char * hashsum(unsigned char* pData,ssize_t dSize){
         .salg_type="hash",
         .salg_name=HASH_NAME
     };
-    if (hash==NULL) return NULL;
     sock_fd=socket(AF_ALG,SOCK_SEQPACKET,0);
     if (sock_fd==-1) return NULL;
     bfd=bind(sock_fd,(struct sockaddr*)&sa,sizeof(sa));

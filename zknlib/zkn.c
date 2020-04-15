@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #define MIN_PKCS_SIG_SIZE (HASH_SIZE+4)
 #define ERROR_SYSTEM 1
@@ -21,7 +22,7 @@
         SUCCESS - pointer to the state structure
         ERROR - NULL
 */
-PZKN_STATE initializeZKNThread(uint16_t wVerticeCount)
+PZKN_STATE initializeZKnThread(uint16_t wVerticeCount)
 {
     PZKN_STATE pZKNState;
     PLEGENDRE_PRNG plegendre_prng;
@@ -33,7 +34,7 @@ PZKN_STATE initializeZKNThread(uint16_t wVerticeCount)
         free(pZKNState);
         return NULL;
     }
-    pZKNState->pLedendrePrng=plegendre_prng;
+    pZKNState->pLegendrePrng=plegendre_prng;
     pZKNState->pbFLAG=NULL;
     pZKNState->pZKNGraph=NULL;
     return pZKNState;
@@ -47,10 +48,11 @@ PZKN_STATE initializeZKNThread(uint16_t wVerticeCount)
     return value:
         None
 */
-void destroyZKNThread(PZKN_STATE pZKNState)
+void destroyZKnThread(PZKN_STATE pZKNState)
 {
-    destroy_PRNG(pZKNState->pLedendrePrng);
+    destroy_PRNG(pZKNState->pLegendrePrng);
     free(pZKNState->pbFLAG);
+    if (pZKNState->pZKNGraph!=NULL) free(pZKNState->pZKNGraph->pbGraphData);
     free(pZKNState->pZKNGraph);
     free(pZKNState);
 }
@@ -69,6 +71,7 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
     PINITIAL_SETTING_PACKET pInitialSettingPacket;
     int fd;
     ssize_t bytesRead, totalBytesRead;
+    
     if (pZKnState==NULL) return NULL;
     pInitialSettingPacket=(PINITIAL_SETTING_PACKET)malloc(sizeof(INITIAL_SETTING_PACKET));
     if (pInitialSettingPacket==NULL) return NULL;
@@ -79,7 +82,7 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
     }
     totalBytesRead=0;
     while (totalBytesRead<RANDOM_R_SIZE){
-        bytesRead=read(fd,pInitialSettingPacket->RANDOM_R+bytesRead,RANDOM_R_SIZE-totalBytesRead);
+        bytesRead=read(fd,pInitialSettingPacket->RANDOM_R+totalBytesRead,RANDOM_R_SIZE-totalBytesRead);
         if (bytesRead==-1){
             free(pInitialSettingPacket);
             close(fd);
@@ -136,13 +139,13 @@ uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize){
             ERROR_BAD_VALUE - something was not right with the data (probably caller's fault)
 
 */
-uint32_t updateZKNGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR)
+uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR)
 {
     uint8_t* signHash;
     uint8_t* actualHash;
     uint8_t* plHolder;
     uint8_t* pbUnpackedMatrix;
-    int16_t swDimension;
+    uint16_t wDimension;
     uint32_t dwUnpackedMatrixSize;
     PGRAPH pZKNGraph;
     if (pZKNState==NULL) return ERROR_SYSTEM;
@@ -159,28 +162,32 @@ uint32_t updateZKNGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
     if (memcmp(pRANDOMR,pGraphSetPacket->RANDOM_R,RANDOM_R_SIZE)!=0) return ERROR_BAD_VALUE;
 #endif
     if (pGraphSetPacket->dwPackedMatrixSize!=(dwPacketSize-GRAPH_SET_PACKET_HEADER_SIZE)) return ERROR_BAD_VALUE;
-    pbUnpackedMatrix=unpack_matr(pGraphSetPacket->dwPackedMatrixSize,pGraphSetPacket->bPackedMatrixData,&swDimension);
-    if (pbUnpackedMatrix==NULL) return NULL;
+    pbUnpackedMatrix=unpackMatrix(pGraphSetPacket->dwPackedMatrixSize,pGraphSetPacket->bPackedMatrixData,&wDimension);
+    if (pbUnpackedMatrix==NULL) return ERROR_BAD_VALUE;
 
-    if (swDimension!=pZKNState->wDefaultVerticeCount) return ERROR_BAD_VALUE;
-    dwUnpackedMatrixSize=(((uint32_t) swDimension)*(uint32_t)swDimension);
+    if (wDimension!=pZKNState->wDefaultVerticeCount) return ERROR_BAD_VALUE;
+    dwUnpackedMatrixSize=(((uint32_t) wDimension)*(uint32_t)wDimension);
     if (dwUnpackedMatrixSize>MAX_MATR_BYTE_SIZE) return ERROR_BAD_VALUE;
 
     if (pZKNState->pbFLAG==NULL){
-        plHolder=calloc(0,FLAG_ARRAY_SIZE);
-        if (plHolder==NULL) return ERROR_SYSTEM;
+        plHolder=malloc(FLAG_ARRAY_SIZE);
+        if (plHolder==NULL) 
+        {
+            free(pbUnpackedMatrix);
+            return ERROR_SYSTEM;
+        }
         pZKNState->pbFLAG=plHolder;
     }
+    if (pZKNState->pZKNGraph!=NULL) free(pZKNState->pZKNGraph->pbGraphData);
     free(pZKNState->pZKNGraph);
-    plHolder=malloc(GRAPH_HEADER_SIZE+dwUnpackedMatrixSize);
+    plHolder=malloc(sizeof(GRAPH));
     if (plHolder==NULL) return ERROR_SYSTEM;
     pZKNState->pZKNGraph=(PGRAPH)plHolder;
     memcpy(pZKNState->pbFLAG,pGraphSetPacket->FLAG,FLAG_ARRAY_SIZE);
-    pZKNState->pbFLAG[FLAG_ARRAY_SIZE-1]=0;
     pZKNGraph=pZKNState->pZKNGraph;
-    pZKNGraph->wVerticeCount=swDimension;
+    pZKNGraph->wVerticeCount=wDimension;
     pZKNGraph->dwMatrixSize=dwUnpackedMatrixSize;
-    memcpy(pZKNGraph->graphData,pbUnpackedMatrix,dwUnpackedMatrixSize);
+    pZKNGraph->pbGraphData=pbUnpackedMatrix;
     return SUCCESS;
 }
 
@@ -197,7 +204,7 @@ uint32_t updateZKNGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
 
 */
 PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount){
-    return generate_graph_and_cycle_matrix(wVerticeCount);
+    return generateGraphAndCycleMatrix(wVerticeCount);
 };
 
 /*    
@@ -210,7 +217,7 @@ PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount){
         N/A
 */
 void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge){
-    return free_full_knowledge(pFullKnowledge);
+    return freeFullKnowledge(pFullKnowledge);
 }
 
 /*
@@ -228,11 +235,11 @@ uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out int32_t
     uint32_t dwComputedDataSize;
     uint8_t *pbPackedMatr,*pbPackedCycle;
     PFULL_KNOWLEDGE_FOR_STORAGE pPackedFullKnowledge;
-    int16_t wPackedMatrSize, wPackedCycleSize;
+    uint16_t wPackedMatrSize, wPackedCycleSize;
     if (pFullKnowledge==NULL || pFullKnowledge->pbCycleMatrix==NULL || pFullKnowledge->pbGraphMatrix==NULL) return NULL;
-    pbPackedMatr=pack_matr(pFullKnowledge->pbGraphMatrix,pFullKnowledge->swDimension,&wPackedMatrSize);
+    pbPackedMatr=packMatrix(pFullKnowledge->pbGraphMatrix,pFullKnowledge->swDimension,&wPackedMatrSize);
     if (pbPackedMatr==NULL) return NULL;
-    pbPackedCycle=pack_matr(pFullKnowledge->pbCycleMatrix,pFullKnowledge->swDimension,&wPackedCycleSize);
+    pbPackedCycle=packMatrix(pFullKnowledge->pbCycleMatrix,pFullKnowledge->swDimension,&wPackedCycleSize);
     if (pbPackedCycle==NULL) {
         free(pbPackedMatr);
         return NULL;
@@ -244,7 +251,7 @@ uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out int32_t
         return NULL;
     }
     dwComputedDataSize=FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE+((uint32_t) wPackedCycleSize)*2;
-    pPackedFullKnowledge=calloc(0,dwComputedDataSize);
+    pPackedFullKnowledge=malloc(dwComputedDataSize);
     if (pPackedFullKnowledge==NULL){
         free(pbPackedCycle);
         free(pbPackedMatr);
@@ -274,21 +281,21 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
     PFULL_KNOWLEDGE pFullKnowledge;
     PFULL_KNOWLEDGE_FOR_STORAGE pFknForStorage;
     uint8_t *pbUnpackedMatr;
-    int16_t swDimension;
+    uint16_t wDimension;
     if (pbPackedFullKnowledge==NULL) return NULL;
     pFknForStorage=(PFULL_KNOWLEDGE_FOR_STORAGE)pbPackedFullKnowledge;
     pFullKnowledge=(PFULL_KNOWLEDGE)malloc(sizeof(FULL_KNOWLEDGE));
     if (pFullKnowledge==NULL) return NULL;
-    pbUnpackedMatr=unpack_matr((uint16_t)pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData,&swDimension);
+    pbUnpackedMatr=unpackMatrix((uint16_t)pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData,&wDimension);
     if (pbUnpackedMatr==NULL){
         free(pFullKnowledge);
         return NULL;
     }
-    pFullKnowledge->swDimension=swDimension;
-    pFullKnowledge->dwMatrixArraySize=((uint32_t)swDimension)*(uint32_t)swDimension;
+    pFullKnowledge->swDimension=wDimension;
+    pFullKnowledge->dwMatrixArraySize=((uint32_t)wDimension)*(uint32_t)wDimension;
 
     pFullKnowledge->pbGraphMatrix=pbUnpackedMatr;
-    pbUnpackedMatr=unpack_matr((uint16_t)pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData+(pFknForStorage->dwSinglePackedMatrixSize),&swDimension);
+    pbUnpackedMatr=unpackMatrix((uint16_t)pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData+(pFknForStorage->dwSinglePackedMatrixSize),&wDimension);
     if (pbUnpackedMatr==NULL){
         free(pFullKnowledge->pbGraphMatrix);
         free(pFullKnowledge);
@@ -298,6 +305,23 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
     return pFullKnowledge;
 }
 
+/*
+    uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize)
+    description:
+        Get vertice count from inital setting packet
+    arguments:
+        pbInitialSettingPacket - pointer to memory containing the initial setting packet
+        dwPacketSize - size of the array
+    return value:
+        SUCCESS - desired vertice count
+        ERROR - 0
+*/
+uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize){
+    PINITIAL_SETTING_PACKET pInitialSettingPacket;
+    if (dwPacketSize<sizeof(INITIAL_SETTING_PACKET)) return 0;
+    pInitialSettingPacket=(PINITIAL_SETTING_PACKET)pbInitialSettingPacket;
+    return pInitialSettingPacket->wVerticeCount;
+}
 /*
     PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize)
     description:
@@ -318,10 +342,11 @@ PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* p
     uint32_t dwPackedMatrixSize;
     dwPackedMatrixSize=0;
     
-    pbPackedMatrix=pack_matr(pFullKnowledge->pbGraphMatrix,pFullKnowledge->swDimension,(uint16_t*)&dwPackedMatrixSize);
+    pbPackedMatrix=packMatrix(pFullKnowledge->pbGraphMatrix,pFullKnowledge->swDimension,(uint16_t*)&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL) return NULL;
     dwGraphSetPacketSize=GRAPH_SET_PACKET_HEADER_SIZE + dwPackedMatrixSize;
-    pGraphSetPacket=(PGRAPH_SET_PACKET)malloc(dwGraphSetPacketSize);
+    *(pdwGraphSetPacketSize)=dwGraphSetPacketSize;
+    pGraphSetPacket=(PGRAPH_SET_PACKET)calloc(dwGraphSetPacketSize,1);
     if(pGraphSetPacket==NULL){
         free(pbPackedMatrix);
         return NULL;
@@ -353,12 +378,13 @@ uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint32_t dwDesi
     if (dwDesiredSignatureSize<(HASH_SIZE+4)) return NULL;
     pbHash=hashsum(pbData,(ssize_t)dwDataSize);
     if (pbHash==NULL) return NULL;
-    pbSign=malloc(dwDesiredSignatureSize);
+    pbSign=calloc(dwDesiredSignatureSize,1);
     if (pbSign==NULL){
         free (pbHash);
         return NULL;
     }
     memcpy(pbSign+dwDesiredSignatureSize-HASH_SIZE,pbHash,HASH_SIZE);
+    free(pbHash);
     *pbSign=0;
     *(pbSign+1)=1;
     *(pbSign+dwDesiredSignatureSize-HASH_SIZE-1)=0;
@@ -381,9 +407,9 @@ uint8_t* packMatrixForTransmission(PMATRIX_HOLDER pMatrixHolder, out uint32_t* p
     PPACKED_MATRIX pPackedMatrix;
     uint8_t * pbPacked;
     uint32_t dwResultingSize;
-    int16_t wResSize;
+    uint16_t wResSize;
     if (pMatrixHolder==NULL || pMatrixHolder->pbData) return NULL;
-    pbPacked=pack_matr(pMatrixHolder->pbData,pMatrixHolder->wDimension,&wResSize);
+    pbPacked=packMatrix(pMatrixHolder->pbData,pMatrixHolder->wDimension,&wResSize);
     if (pbPacked==NULL) return NULL;
     dwResultingSize=(uint32_t)wResSize+PACKED_MATRIX_HEADER_SIZE;
     pPackedMatrix=(PPACKED_MATRIX)malloc(dwResultingSize);
