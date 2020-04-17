@@ -58,7 +58,7 @@ int main(){
     pbResultingBuffer= sha256(hashTest,4);
     if (memcmp(pbResultingBuffer,"\x63\xc1\xdd\x95\x1f\xfe\xdf\x6f\x7f\xd9\x68\xad\x4e\xfa\x39\xb8\xed\x58\x4f\x16\x2f\x46\xe7\x15\x11\x4e\xe1\x84\xf8\xde\x92\x01",SHA256_SIZE)!=0){
         free(pbResultingBuffer);
-        printf("CRC32 check failed\n");
+        printf("SHA256 check failed\n");
         return -1;
     }
     free(pbResultingBuffer);
@@ -84,7 +84,7 @@ int main(){
     printf("Starting test of code functionaliy:\n");
     printf("#2 Testing full initialization cycle with small dimension\n");
     //Client side
-    pZKnState=initializeZKnThread(MIN_MATRIX_DIMENSION,32,0xff);
+    pZKnState=initializeZKnState(MIN_MATRIX_DIMENSION,32,0xff);
     printf ("ZKNState %p\n",pZKnState);
     printf("PRNG: %p\nFLAG: %s\nGRAPH: %p\nVertice count: %d\n",pZKnState->pLegendrePrng,pZKnState->pbFLAG,pZKnState->pZKnGraph,pZKnState->wDefaultVerticeCount);
     pInitialSettingPacket=createInitialSettingPacket(pZKnState);
@@ -101,7 +101,7 @@ int main(){
     free(pGraphSetPacket);
     printf("Update result: 0x%x\n",dwResult);
     free(pInitialSettingPacket);
-    destroyZKnThread(pZKnState);
+    destroyZKnState(pZKnState);
 
     //Server side
     freeFullKnowledgeForServer(pFullKnowledge);    

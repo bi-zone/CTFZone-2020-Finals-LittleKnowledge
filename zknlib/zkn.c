@@ -17,50 +17,48 @@
 #define ERROR_REASON_SYSTEM 1
 #define ERROR_REASON_WRONG_VALUE 2
 /*
-    PZKN_STATE initializeZKNThread(void)
+    PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
     description:
-        Exported function, that initializes team server's zero knowledge thread
+        Exported function, that initializes team server's zero knowledge state
     arguments:
         wVerticeCount - desired matrix dimension
     return value:
         SUCCESS - pointer to the state structure
         ERROR - NULL
 */
-PZKN_STATE initializeZKnThread(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
+PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
 {
-    PZKN_STATE pZKNState;
+    PZKN_STATE pZKnState;
     PLEGENDRE_PRNG plegendre_prng;
-    pZKNState=(PZKN_STATE)malloc(sizeof(ZKN_STATE));
-    if (pZKNState==NULL) return NULL;
-    pZKNState->wDefaultVerticeCount=wVerticeCount;
-    pZKNState->bCheckCount=bCheckCount;
-    pZKNState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
-    plegendre_prng=initialize_PRNG(P);
+    pZKnState=(PZKN_STATE)malloc(sizeof(ZKN_STATE));
+    if (pZKnState==NULL) return NULL;
+    pZKnState->wDefaultVerticeCount=wVerticeCount;
+    pZKnState->bCheckCount=bCheckCount;
+    pZKnState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
+    plegendre_prng=initializePRNG(P);
     if (plegendre_prng==NULL){
-        free(pZKNState);
+        free(pZKnState);
         return NULL;
     }
-    pZKNState->pLegendrePrng=plegendre_prng;
-    pZKNState->pbFLAG=NULL;
-    pZKNState->pZKnGraph=NULL;
-    return pZKNState;
+    pZKnState->pbFLAG=NULL;
+    pZKnState->pZKnGraph=NULL;
+    return pZKnState;
 }
 /*
-    void destroyZKNThread(PZKN_STATE pZKNState)
+    void destroyZKnState(PZKN_STATE pZKnState)
     description:
-        Team Server's zero knowledge thread state destructure
+        Team Server's zero knowledge state destruction
     arguments:
         pZKNState - pointer to zero knowledge state structure
     return value:
         None
 */
-void destroyZKnThread(PZKN_STATE pZKNState)
+void destroyZKnState(PZKN_STATE pZKnState)
 {
-    destroy_PRNG(pZKNState->pLegendrePrng);
-    free(pZKNState->pbFLAG);
-    if (pZKNState->pZKnGraph!=NULL) free(pZKNState->pZKnGraph->pbGraphData);
-    free(pZKNState->pZKnGraph);
-    free(pZKNState);
+    free(pZKnState->pbFLAG);
+    if (pZKnState->pZKnGraph!=NULL) free(pZKnState->pZKnGraph->pbGraphData);
+    free(pZKnState->pZKnGraph);
+    free(pZKnState);
 }
 
 /*
@@ -627,6 +625,17 @@ void freeProofsForOneRound(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper
     free(pProofArray);
 }
 
+/*
+    uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* pdwSingleCommitmentSize)
+    description:
+        Create a single commitment with CRC32 hash
+    arguments:
+        pSingleProof - pointer to structure containing permutation, permuted graph and permuted cycle
+        pdwSingleCommitmentSize - for informing the caller of resulting size
+    return value:
+        SUCCESS - pointer to commiment data
+        FAIL - NULL
+*/
 uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* pdwSingleCommitmentSize){
     uint32_t dwSingleCommitmentSize;
     PCRC32_COMMITMENT pCRC32Commitment;
@@ -654,6 +663,18 @@ uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* 
     return (uint8_t*)pCRC32Commitment;
 }
 
+/*
+    uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize)
+    description:
+        Create multiple CRC32 commitments from proof array and put them into one blob
+    arguments:
+        pProofArray - array of single prrofs
+        pProofHelper - additional information for proods
+        pdwCommitmentDataSize - for telling the caller output array size
+    return value:
+        SUCCESS - pointer to blob containing commitments
+        FAIL - NULL
+*/
 uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize){
     uint8_t* pCommitmentArray=NULL;
     uint32_t dwCommitmentRoundDataSize=0;
@@ -674,15 +695,234 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     *pdwCommitmentDataSize=dwCommitmentRoundDataSize;
     return pCommitmentArray;
 }
-uint8_t* createSHA256CommitmentRound(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper,out uint32_t* pdwCommitmentDataSize){
-    return NULL;
-}
- 
 
 /*
+    uint8_t* createSingleSHA256Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* pdwSingleCommitmentSize)
+    description:
+        Create a single commitment with SHA256 hash
+    arguments:
+        pSingleProof - pointer to structure containing permutation, permuted graph and permuted cycle
+        pdwSingleCommitmentSize - for informing the caller of resulting size
+    return value:
+        SUCCESS - pointer to commiment data
+        FAIL - NULL
+*/
+ uint8_t* createSingleSHA256Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* pdwSingleCommitmentSize){
+    uint32_t dwSingleCommitmentSize;
+    PSHA256_COMMITMENT pSHA256Commitment;
+    uint8_t* pSHA256;
+    dwSingleCommitmentSize=CRC32_COMMITMENT_HEADER_SIZE+pSingleProof->dwPackedMatrixSize;
+    pSHA256Commitment=(PCRC32_COMMITMENT)malloc(dwSingleCommitmentSize);
+    if (pSHA256Commitment==NULL) return NULL;
+    pSHA256=sha256(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+    if (pSHA256==NULL){
+        free(pSHA256Commitment);
+        return NULL;
+    }
+    memcpy(pSHA256Commitment->permutationSHA256,pSHA256,SHA256_SIZE);
+    free(pSHA256);
+    pSHA256=crc32(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+    if (pSHA256==NULL){
+        free(pSHA256Commitment);
+        return NULL;
+    }
+    memcpy(pSHA256Commitment->permutedCycleSHA256,pSHA256,SHA256_SIZE);
+    free(pSHA256);
+    pSHA256Commitment->dwPackedPermutedMatrixSize=pSingleProof->dwPackedMatrixSize;
+    memcpy(pSHA256Commitment->packedPermutedMatrix,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
+    *pdwSingleCommitmentSize=dwSingleCommitmentSize;
+    return (uint8_t*)pSHA256Commitment;
+}
+
+/*
+    uint8_t* createSHA256CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize)
+    description:
+        Create multiple SHA256 commitments from proof array and put them into one blob
+    arguments:
+        pProofArray - array of single prrofs
+        pProofHelper - additional information for proods
+        pdwCommitmentDataSize - for telling the caller output array size
+    return value:
+        SUCCESS - pointer to blob containing commitments
+        FAIL - NULL
+*/
+uint8_t* createSHA256CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize){
+    uint8_t* pCommitmentArray=NULL;
+    uint32_t dwCommitmentRoundDataSize=0;
+    uint32_t dwSingleCommitmentSize;
+    uint8_t* pSingleCommitment;
+    uint8_t bIndex;
+    for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+        pSingleCommitment=createSingleSHA256Commitment(pProofArray[bIndex], &dwSingleCommitmentSize);
+        if (pSingleCommitment==NULL){
+            free(pCommitmentArray);
+            return NULL;
+        }
+        pCommitmentArray=realloc(pCommitmentArray,dwSingleCommitmentSize+dwCommitmentRoundDataSize);
+        memcpy(pCommitmentArray+dwCommitmentRoundDataSize,pSingleCommitment,dwSingleCommitmentSize);
+        dwCommitmentRoundDataSize=dwCommitmentRoundDataSize+dwSingleCommitmentSize;
+        free(pSingleCommitment);
+    }
+    *pdwCommitmentDataSize=dwCommitmentRoundDataSize;
+    return pCommitmentArray;
+}
+
+/*
+    PAES_COMMITMENT createSingleAESCommitment(PSINGLE_PROOF pSingleProof, out uint32_t* pdwCommitmentSize, \
+        out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformation)
+    description:
+        Create a single AES commitment
+    arguments:
+        pSingleProof - pointer to permutation / permuted graph / permuted cycle data
+        pdwCommitmentSize - for outputing size of output data
+        ppSingleAesCommitmentExtraInformation - pointer for outputing extra information for unpacking commitment (keys)
+    return value:
+        SUCCESS - pointer to comitment data
+        FAIL - NULL
+*/
+PAES_COMMITMENT createSingleAESCommitment(PSINGLE_PROOF pSingleProof, out uint32_t* pdwCommitmentSize, \
+out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformation){
+    PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION pExtraInformation;
+    PAES_COMMITMENT pAESCommitment;
+    uint8_t* pbEncryptedPermutationData;
+    uint8_t* pbEncryptedCycleData;
+    uint32_t dwEncryptedPermutationDataSize;
+    uint32_t dwEncryptedCycleDataSize;
+    uint32_t dwSingleCommitmentSize;
+    unsigned char IV1[AES_IV_SIZE];
+    unsigned char IV2[AES_IV_SIZE];
+    if (pSingleProof==NULL || ppSingleAesCommitmentExtraInformation==NULL) return NULL;
+    pExtraInformation=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)malloc(sizeof(SINGLE_AES_COMMITMENT_EXTRA_INFORMATION));
+    if (pExtraInformation==NULL) return NULL;
+    getRandomBytes(IV1,AES_IV_SIZE);
+    getRandomBytes(IV2,AES_IV_SIZE);
+    getRandomBytes(pExtraInformation->permutationKey,AES128_KEY_SIZE);
+    getRandomBytes(pExtraInformation->permutedCycleKey,AES128_KEY_SIZE);
+    pbEncryptedPermutationData=aes128cbc_encrypt(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize, \
+        pExtraInformation->permutationKey,IV1,&dwEncryptedPermutationDataSize);
+    if (pbEncryptedPermutationData==NULL){
+        free(pExtraInformation);
+        return NULL;
+    }
+    pbEncryptedCycleData=aes128cbc_encrypt(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize, \
+        pExtraInformation->permutedCycleKey,IV2,&dwEncryptedCycleDataSize);
+    if (pbEncryptedPermutationData==NULL || dwEncryptedCycleDataSize!=dwEncryptedPermutationDataSize){
+        free(pbEncryptedCycleData);
+        free(pbEncryptedPermutationData);
+        free(pExtraInformation);
+        return NULL;
+    }
+    dwSingleCommitmentSize=AES_COMMITMENT_HEADER_SIZE+2*dwEncryptedPermutationDataSize+pSingleProof->dwPackedMatrixSize;
+    pAESCommitment=(PAES_COMMITMENT)malloc(dwSingleCommitmentSize);
+    if (pAESCommitment==NULL){
+        free(pbEncryptedCycleData);
+        free(pbEncryptedPermutationData);
+        free(pExtraInformation);
+        return NULL;
+    }
+    pAESCommitment->dwPackedPermutationMatrixSize=pSingleProof->dwPackedMatrixSize;
+    pAESCommitment->dwSingleCiphertextPlusIVSize=dwEncryptedCycleDataSize;
+    memcpy(pAESCommitment->commitmentData,pbEncryptedPermutationData,dwEncryptedPermutationDataSize);
+    memcpy(pAESCommitment->commitmentData+dwEncryptedPermutationDataSize,pbEncryptedCycleData,dwEncryptedCycleDataSize);
+    memcpy(pAESCommitment->commitmentData+dwEncryptedPermutationDataSize+dwEncryptedCycleDataSize,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
+    *pdwCommitmentSize=dwSingleCommitmentSize;
+    *ppSingleAesCommitmentExtraInformation=pExtraInformation;
+    free(pbEncryptedCycleData);
+    free(pbEncryptedPermutationData);
+    return pAESCommitment; 
+}
+
+/*
+    uint8_t* createAESCommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize, \
+        out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation)
+    description:
+        Create a full round worth of AES commitments
+    arguments:
+        pProofArray - array with proofs for each commitment
+        pProofHelper - additional information for proofs
+        pdwCommitmentDataSize - returns output array size to the caller
+        ppCommitmentExtraInformation - key information ouput for unpacking commitment
+    return value:
+        SUCCESS - pointer to AES commitment data
+        FAIL - NULL
+*/
+uint8_t* createAESCommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize, \
+out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
+    PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* pAESExtraInformationArray;
+    PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation;
+    uint32_t dwTotalCommitmentDataSize=0;
+    uint32_t dwCurrentCommitmentSize;
+    uint8_t* pbCommitmentRoundData=NULL;
+    uint8_t* pbCurrentCommitment;
+    uint8_t bIndex,bJndex;
+    pAESExtraInformationArray=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION*)malloc(sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount);
+    if (pAESExtraInformationArray==NULL) return NULL;
+    pCommitmentExtraInformation=(PCOMMITMENT_EXTRA_INFORMATION)malloc(sizeof(COMMITMENT_EXTRA_INFORMATION));
+    pCommitmentExtraInformation->dwDataSize=sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount;
+    pCommitmentExtraInformation->pbData=(uint32_t*)pAESExtraInformationArray;
+    *ppCommitmentExtraInformation=pCommitmentExtraInformation;
+    if (pCommitmentExtraInformation=NULL){
+        free(pAESExtraInformationArray);
+        return NULL;
+    }
+    for(bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+        pbCurrentCommitment=(uint8_t*)createSingleAESCommitment(pProofArray[bIndex],&dwCurrentCommitmentSize,&pAESExtraInformationArray[bIndex]);
+        if (pbCurrentCommitment==NULL){
+            for (bJndex=0;bJndex<bIndex;bJndex=bJndex+1){
+                free(pAESExtraInformationArray[bJndex]);
+            }
+            free(pAESExtraInformationArray);
+            free(pbCommitmentRoundData);
+            return NULL;
+        }
+       pbCommitmentRoundData=realloc(pbCommitmentRoundData,dwTotalCommitmentDataSize+dwCurrentCommitmentSize);
+       if (pbCommitmentRoundData==NULL){
+            for (bJndex=0;bJndex<bIndex;bJndex=bJndex+1){
+                free(pAESExtraInformationArray[bJndex]);
+            }
+            free(pAESExtraInformationArray);
+            return NULL;
+       } 
+       memcpy(pbCommitmentRoundData+dwTotalCommitmentDataSize,pbCurrentCommitment,dwCurrentCommitmentSize);
+       free(pbCurrentCommitment);
+       dwTotalCommitmentDataSize=dwTotalCommitmentDataSize+dwCurrentCommitmentSize;
+    }
+   *pdwCommitmentDataSize=dwTotalCommitmentDataSize;
+   return pbCommitmentRoundData; 
+}
+
+
+/*
+    void freeCommitmentExtraInformation(PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation)
+    description:
+        Free commitment extra information structure and its members
+    arguments:
+        pCommitmentExtraInformation - pointer to COMMITMENT_EXTRA_INFORMATION to free
+    return value:
+        N/A
+*/
+void freeCommitmentExtraInformation(PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation){
+    if (pCommitmentExtraInformation==NULL) return;
+    free(pCommitmentExtraInformation->pbData);
+    fre(pCommitmentExtraInformation);
+}
+
+/*
+    PCOMMITMENT_PACKET createCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper,out uint32_t* pdwCommitmentPacketSize, \
+        out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation)
+    description:
+        Create Full Round commitment packet
+    arguments:
+        pProofArray - array of pointers to single proofs
+        pProofHelper - all additional information
+        pdwCommitmentPacketSize - output packet size
+        ppCommitmentExtraInformation - output additional data for unpacking commitment (needed for aes commitment)
+    return value
+        SUCCESS - commitment packet
+        FAIL - NULL
 */
 PCOMMITMENT_PACKET createCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper,out uint32_t* pdwCommitmentPacketSize, \
-                                            out PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation){
+out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
     //PCOMMITMENT_PACKET pCommitmentPacket;
     COMMITMENT_ALGORITHMS commitmentAlgs;
     PCOMMITMENT_PACKET pCommitmentPacket;
@@ -711,17 +951,258 @@ PCOMMITMENT_PACKET createCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELP
         return pCommitmentPacket;
     }else{
         if (commitmentAlgs.isSHA256Supported){
-            return NULL;
+            pbCommitmentData=createSHA256CommitmentRound(pProofArray,pProofHelper,&dwCommitmentDataSize);
+            if (pbCommitmentData==NULL) return NULL;
+            dwResultingPacketSize=dwCommitmentDataSize+COMMITMENT_PACKET_HEADER_SIZE;
+            pCommitmentPacket=(PCOMMITMENT_PACKET)malloc(dwResultingPacketSize);
+            if (pCommitmentPacket==NULL){
+                free(pbCommitmentData);
+                return NULL;
+            }
+            pCommitmentPacket->bCommitmentCount=pProofHelper->bCheckCount;
+            commitmentAlgs.supportedAlgsCode=0;
+            commitmentAlgs.isSHA256Supported=1;
+            pCommitmentPacket->commitmentType=commitmentAlgs;
+            pCommitmentPacket->dwDataSize=dwCommitmentDataSize;
+            memcpy(pCommitmentPacket->commitmentData,pbCommitmentData,dwCommitmentDataSize);
+            free(pbCommitmentData);
+            *pdwCommitmentPacketSize=dwResultingPacketSize;
+            return pCommitmentPacket;    
         }
         else{
             if (commitmentAlgs.isAESSupported){
-                return NULL;
+                pbCommitmentData=createAESCommitmentRound(pProofArray,pProofHelper,&dwCommitmentDataSize,ppCommitmentExtraInformation);
+                if (pbCommitmentData==NULL) return NULL;
+                dwResultingPacketSize=dwCommitmentDataSize+COMMITMENT_PACKET_HEADER_SIZE;
+                pCommitmentPacket=(PCOMMITMENT_PACKET)malloc(dwResultingPacketSize);
+                if (pCommitmentPacket==NULL){
+                    free(pbCommitmentData);
+                    free(*ppCommitmentExtraInformation);
+                    *ppCommitmentExtraInformation=NULL;
+                    return NULL;
+                }
+                pCommitmentPacket->bCommitmentCount=pProofHelper->bCheckCount;
+                commitmentAlgs.supportedAlgsCode=0;
+                commitmentAlgs.isAESSupported=1;
+                pCommitmentPacket->commitmentType=commitmentAlgs;
+                pCommitmentPacket->dwDataSize=dwCommitmentDataSize;
+                memcpy(pCommitmentPacket->commitmentData,pbCommitmentData,dwCommitmentDataSize);
+                free(pbCommitmentData);
+                *pdwCommitmentPacketSize=dwResultingPacketSize;
+                return pCommitmentPacket;
             }else{
                 return NULL;
             }
         }
     }
 
+}
+/*
+    uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolState,uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize)
+    description:
+        Save commitment for the proof (copy data)
+    arguments:
+        pZKnState - pointer to structure holding general configuration
+        pZKnProtocolState - pointer to protocol state structure
+        pbCommitmentData - pointer to commitment data
+        dwCommitmentDataSize - size of commitment data
+    return value
+        SUCCESS - SUCCESS
+        FAIL - ERROR_SYSTEM if something on a system level went wrong
+                ERROR_BAD_VALUE if simulation is disabled and commitment has already been saved        
+*/
+uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolState,uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize){
+    if (pZKnState==NULL || pZKnProtocolState==NULL || pbCommitmentData==NULL) return ERROR_SYSTEM;
+    if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete ){
+        if ((pZKnState->simulationDisabled)!=0){
+            return ERROR_BAD_VALUE;
+        }
+        free(pZKnProtocolState->pbCommitmentData);
+    }
+    pZKnProtocolState->pbCommitmentData=(uint8_t*)malloc(dwCommitmentDataSize);
+    if (pZKnProtocolState->pbCommitmentData==NULL) return ERROR_SYSTEM;
+    memcpy(pZKnProtocolState->pbCommitmentData,pbCommitmentData,dwCommitmentDataSize);
+    pZKnProtocolState->dwCommitmentDataSize=dwCommitmentDataSize;
+    return SUCCESS;
+}
+
+/*
+    PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, out uint32_t* pdwPacketSize)
+    description:
+        Generate challenge (random bits) to send to the prover
+    arguments:
+        pZKnState - pointer to structure holding general configuration
+        pZKnProtocolState - pointer to protocol state structure
+        pdwPacketSize - for output; packet size
+    return value:
+        SUCCESS - pointer to challenge packet
+        FAIL - NULL
+*/
+PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, out uint32_t* pdwPacketSize){
+    uint64_t dwRandom;
+    uint8_t bBitLength;
+    PCHALLENGE_PACKET pChallengePacket;
+    if (pZKnState==NULL || pZKnProtocolState==NULL) return NULL;
+    pChallengePacket=(PCHALLENGE_PACKET)malloc(sizeof(CHALLENGE_PACKET));
+    if (pChallengePacket==NULL) return NULL;
+    dwRandom=generateRandomUpTo64Bits(pZKnProtocolState->pLegendrePRNG,pZKnState->bCheckCount);
+    bBitLength=pZKnState->bCheckCount;
+    pZKnProtocolState->dwRandom=dwRandom;
+    pChallengePacket->dwRandom=dwRandom;
+    pChallengePacket->bBitCount=bBitLength;
+    *pdwPacketSize=sizeof(CHALLENGE_PACKET);
+    return pChallengePacket;
+}
+
+PCRC32_UNPACK_COMMITMENT createSingleCRC32UnpackCommitment(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwUnpackCommitmentSize){
+    PCRC32_UNPACK_COMMITMENT pCRC32UnpackCommitment;
+    if (pSingleProof==NULL || pdwUnpackCommitmentSize==NULL) return NULL;
+    pCRC32UnpackCommitment=(PCRC32_COMMITMENT)malloc(pSingleProof->dwPackedMatrixSize+CRC32_UNPACK_COMMITMENT_HEADER_SIZE);
+    if (pCRC32UnpackCommitment==NULL) return NULL;
+    if (bBit==0){
+        memcpy(pCRC32UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+    }else{
+        memcpy(pCRC32UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+    }
+    pCRC32UnpackCommitment->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
+    *pdwUnpackCommitmentSize=pSingleProof->dwPackedMatrixSize+CRC32_UNPACK_COMMITMENT_HEADER_SIZE;
+    return pCRC32UnpackCommitment;
+}
+
+uint8_t* createCRC32UnpackCommitmentRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwUnpackedCommitmentSize){
+    uint8_t* pbUnpackCommitmentRound=NULL;
+    uint32_t dwTotalUnpackCommitmentSize=0;
+    uint32_t dwCurrentUnpackCommitmentSize;
+    uint8_t bIndex;
+    uint64_t dwCurrentBit;
+    PCRC32_UNPACK_COMMITMENT pSingleUnpackCommitment;
+    if (pProofArray==NULL || pChallengePacket==NULL || pdwUnpackedCommitmentSize==NULL ) return NULL;
+    dwCurrentBit=pChallengePacket->dwRandom;
+    for (bIndex=0;bIndex<pChallengePacket->bBitCount; bIndex=bIndex+1){
+        pSingleUnpackCommitment=createSingleCRC32UnpackCommitment(pProofArray[bIndex],(uint8_t)(dwCurrentBit&1),&dwCurrentUnpackCommitmentSize);
+        dwCurrentBit=dwCurrentBit>>1;
+        if (pSingleUnpackCommitment==NULL){
+            free(pbUnpackCommitmentRound);
+            return NULL;
+        }
+        pbUnpackCommitmentRound=(uint8_t*)realloc(pbUnpackCommitmentRound,dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize);
+        if (pbUnpackCommitmentRound==NULL) {
+            free(pSingleUnpackCommitment);
+            return NULL;
+        }
+        memcpy(pbUnpackCommitmentRound+dwTotalUnpackCommitmentSize,(uint8_t*)pSingleUnpackCommitment,dwCurrentUnpackCommitmentSize);
+        free(pSingleUnpackCommitment);
+        dwTotalUnpackCommitmentSize=dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize;
+    }
+    *pdwUnpackedCommitmentSize=dwTotalUnpackCommitmentSize;
+    return pbUnpackCommitmentRound;
+}
+
+PSHA256_UNPACK_COMMITMENT createSingleSHA256UnpackCommitment(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwUnpackCommitmentSize){
+    PSHA256_UNPACK_COMMITMENT pSHA256UnpackCommitment;
+    if (pSingleProof==NULL || pdwUnpackCommitmentSize==NULL) return NULL;
+    pSHA256UnpackCommitment=(PCRC32_COMMITMENT)malloc(pSingleProof->dwPackedMatrixSize+SHA256_UNPACK_COMMITMENT_HEADER_SIZE);
+    if (pSHA256UnpackCommitment==NULL) return NULL;
+    if (bBit==0){
+        memcpy(pSHA256UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+    }else{
+        memcpy(pSHA256UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+    }
+    pSHA256UnpackCommitment->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
+    *pdwUnpackCommitmentSize=pSingleProof->dwPackedMatrixSize+SHA256_UNPACK_COMMITMENT_HEADER_SIZE;
+    return pSHA256UnpackCommitment;
+}
+
+uint8_t* createSHA256UnpackCommitmentRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwUnpackedCommitmentSize){
+    uint8_t* pbUnpackCommitmentRound=NULL;
+    uint32_t dwTotalUnpackCommitmentSize=0;
+    uint32_t dwCurrentUnpackCommitmentSize;
+    uint8_t bIndex;
+    uint64_t dwCurrentBit;
+    PSHA256_UNPACK_COMMITMENT pSingleUnpackCommitment;
+    if (pProofArray==NULL || pChallengePacket==NULL || pdwUnpackedCommitmentSize==NULL ) return NULL;
+    dwCurrentBit=pChallengePacket->dwRandom;
+    for (bIndex=0;bIndex<pChallengePacket->bBitCount; bIndex=bIndex+1){
+        pSingleUnpackCommitment=createSingleSHA256UnpackCommitment(pProofArray[bIndex],(uint8_t)(dwCurrentBit&1),&dwCurrentUnpackCommitmentSize);
+        dwCurrentBit=dwCurrentBit>>1;
+        if (pSingleUnpackCommitment==NULL){
+            free(pbUnpackCommitmentRound);
+            return NULL;
+        }
+        pbUnpackCommitmentRound=(uint8_t*)realloc(pbUnpackCommitmentRound,dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize);
+        if (pbUnpackCommitmentRound==NULL) {
+            free(pSingleUnpackCommitment);
+            return NULL;
+        }
+        memcpy(pbUnpackCommitmentRound+dwTotalUnpackCommitmentSize,(uint8_t*)pSingleUnpackCommitment,dwCurrentUnpackCommitmentSize);
+        free(pSingleUnpackCommitment);
+        dwTotalUnpackCommitmentSize=dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize;
+    }
+    *pdwUnpackedCommitmentSize=dwTotalUnpackCommitmentSize;
+    return pbUnpackCommitmentRound;
+}
+
+PAES_UNPACK_COMMITMENT createSingleAESUnpackCommitment(uint8_t bBit, PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION pSingleAESCommitmentExtraInformation, \
+out uint32_t* pdwUnpackCommitmentSize){
+    PAES_UNPACK_COMMITMENT pAESUnpackCommitment;
+    if (pSingleAESCommitmentExtraInformation==NULL || pdwUnpackCommitmentSize==NULL) return NULL;
+
+}
+
+PUNPACK_COMMITMENT_PACKET createUnpackCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper, PCHALLENGE_PACKET pChallengePacket, \
+PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwUnpackCommitmentPacketSize){
+    if(pProofArray==NULL || pProofHelper==NULL || pChallengePacket==NULL || pdwUnpackCommitmentPacketSize==NULL) return NULL;
+    if (pChallengePacket->bBitCount!=pProofHelper->bCheckCount) return NULL;
+    if (pProofHelper->supportedAlgorithms.isCRC32Supported){
+
+    }else{
+        if(pProofHelper->supportedAlgorithms.isSHA256Supported){
+
+        }else{
+            if(pProofHelper->supportedAlgorithms.isAESSupported){
+
+            }else{
+                return NULL;
+            }
+        }
+    }
+}
+
+/*
+    PZKN_PROTOCOL_STATE initializeZKnProtocolState()
+    description:
+        Initialize ZKN protocol state (when we actual want to prove the knowledge)
+    arguments:
+        None
+    return value:
+        SUCCESS - pointer to ZKN_PROTOCOL_STATE
+        FAIL - NULL
+*/
+PZKN_PROTOCOL_STATE initializeZKnProtocolState(){
+    PZKN_PROTOCOL_STATE pZKnProtocolState;
+    pZKnProtocolState=(PZKN_PROTOCOL_STATE) malloc(sizeof(ZKN_PROTOCOL_STATE));
+    if (pZKnProtocolState==NULL) return NULL;
+    pZKnProtocolState->pLegendrePRNG=initializePRNG(P);
+    if (pZKnProtocolState->pLegendrePRNG==NULL){
+        free(pZKnProtocolState);
+        return NULL;
+    }
+    pZKnProtocolState->protocolProgress.status=0;
+    return pZKnProtocolState;
+}
+
+/*
+    void destroyZKnProtocolState(PZKN_PROTOCOL_STATE pZKnProtocolState)
+    description:
+        Destroy ZKN Protocol State
+    arguments:
+        pZKnProtocolState - pointer to the structure to destroy
+    return value:
+        N/A
+*/
+void destroyZKnProtocolState(PZKN_PROTOCOL_STATE pZKnProtocolState){
+    free(pZKnProtocolState->pLegendrePRNG);
+    free(pZKnProtocolState);
 }
 
 /*

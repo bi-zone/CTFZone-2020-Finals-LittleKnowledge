@@ -15,7 +15,7 @@ unsigned char * crc32(unsigned char* pData,size_t dSize);
 #define out
 
 
-int get16RandomBytes(unsigned char* pData);
+int getRandomBytes(unsigned char* pData, size_t dataSize);
 
 unsigned char* aes128cbc_encrypt(unsigned char* pData, size_t dSize, unsigned char* pbKey, unsigned char* pbIV, out uint32_t* pdwCiphertextSize);
 unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned char* pbKey, out uint32_t* pdwPlaintextSize);

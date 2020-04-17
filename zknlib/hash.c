@@ -100,25 +100,26 @@ unsigned char * crc32(unsigned char* pData,size_t dSize){
     return pHash;
 }
 /*
-    int get16RandomBytes(unsigned char* pData);
+    int getRandomBytes(unsigned char* pData, size_t dataSize);
     description:
-        Write 16 random bytes to the given location
+        Write random bytes to the given location
     arguments:
         pData - pointer to area to write bytes to
+        dataSize - requested data size
     return value:
         SUCCESS - 0
         FAIL - -1
 */
-int get16RandomBytes(unsigned char* pData){
+int getRandomBytes(unsigned char* pData, size_t dataSize){
     int fd;
-    ssize_t bytesRead, totalBytesRead;
+    size_t bytesRead, totalBytesRead;
     totalBytesRead=0;
     fd=open("/dev/urandom",O_RDONLY);
     if (fd==-1){
         return -1;
     } 
     else{
-        while (totalBytesRead<AES_IV_SIZE){
+        while (totalBytesRead<dataSize){
             bytesRead=read(fd,pData+totalBytesRead,AES_IV_SIZE-totalBytesRead);
             if (bytesRead==-1){
                 //Weird

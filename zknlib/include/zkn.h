@@ -26,14 +26,33 @@ typedef union{
   uint8_t supportedAlgsCode:3;
 }COMMITMENT_ALGORITHMS, *PCOMMITMENT_ALGORITHMS;
 
+
+
 typedef struct __ZKN_STATE{
-  PLEGENDRE_PRNG  pLegendrePrng;
   PGRAPH pZKnGraph;
   uint8_t* pbFLAG;
   uint16_t wDefaultVerticeCount;
   uint8_t bCheckCount;
   COMMITMENT_ALGORITHMS supportedAlgorithms;
+  uint8_t simulationDisabled:1;
 }ZKN_STATE,*PZKN_STATE;
+
+typedef union{
+  struct{
+    uint8_t isCommitmentStageComplete:1;
+    uint8_t isRandomnessStageComplete:1;
+    uint8_t isProofStageComplete:1;
+  };
+  uint8_t status;
+}PROTOCOL_PROGRESS,*PPROTOCOL_PROGRESS;
+
+typedef struct __ZKN_PROTOCOL_STATE{
+  PLEGENDRE_PRNG pLegendrePRNG;
+  uint64_t dwRandom;
+  uint8_t* pbCommitmentData;
+  uint32_t dwCommitmentDataSize;
+  PROTOCOL_PROGRESS protocolProgress;
+}ZKN_PROTOCOL_STATE, *PZKN_PROTOCOL_STATE;
 
 typedef struct __GRAPH_SET_PACKET{
   uint8_t RANDOM_R[RANDOM_R_SIZE];
@@ -88,14 +107,24 @@ typedef struct __AES_COMMITMENT{
 
 #define AES_COMMITMENT_HEADER_SIZE offsetof(AES_COMMITMENT, commitmentData)
 
+typedef struct __SINGLE_AES_COMMITMENT_EXTRA_INFORMATION{
+  uint8_t permutationKey[AES128_KEY_SIZE];
+  uint8_t permutedCycleKey[AES128_KEY_SIZE];
+}SINGLE_AES_COMMITMENT_EXTRA_INFORMATION, *PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION;
+
 //We need to save AES keys somewhere, when commiting. Two other schemes don't require extra informtion,
 //since they rely on initial graphs.
 typedef struct __COMMTIMENT_EXTRA_INFORMATION{
   uint32_t dwDataSize;
-  uint8_t data[1];
+  uint8_t* pbData;
 }COMMITMENT_EXTRA_INFORMATION, *PCOMMITMENT_EXTRA_INFORMATION;
 
 #define COMMITMENT_EXTRA_INFORMATION_HEADER_SIZE offsetof(COMMITMENT_EXTRA_INFORMATION,data)
+
+typedef struct __CHALLENGE_PACKET{
+  uint64_t dwRandom;
+  uint32_t bBitCount;
+}CHALLENGE_PACKET, *PCHALLENGE_PACKET;
 
 typedef struct __UNPACK_COMMITMENT_PACKET{
   uint32_t dwDataSize;
@@ -153,7 +182,7 @@ typedef struct __FULL_KNOWLEDGE_FOR_STORAGE
 #define FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE offsetof(FULL_KNOWLEDGE_FOR_STORAGE,bData)
 
 
-DLL_PUBLIC extern PZKN_STATE initializeZKnThread(uint16_t verticeNumber, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms);
+DLL_PUBLIC extern PZKN_STATE initializeZKnState(uint16_t verticeNumber, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms);
 DLL_PUBLIC uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState);
 DLL_PUBLIC uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize);
 DLL_PUBLIC PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize);
@@ -162,6 +191,6 @@ DLL_PUBLIC uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraph
 DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount);
 DLL_PUBLIC void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge);
 
-DLL_PUBLIC extern void destroyZKnThread(PZKN_STATE);
+DLL_PUBLIC extern void destroyZKnState(PZKN_STATE);
 
 #endif //
