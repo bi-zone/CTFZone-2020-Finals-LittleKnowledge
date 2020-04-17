@@ -1,0 +1,4 @@
+*.so
+*.so
+*/obj
+*__pycache__
