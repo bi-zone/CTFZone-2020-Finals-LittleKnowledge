@@ -31,8 +31,12 @@
 PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
 {
     PZKN_STATE pZKnState;
+    if ((wVerticeCount>MAX_MATRIX_DIMENSION)|| (wVerticeCount<MIN_MATRIX_DIMENSION)) return NULL;
+    if (bCheckCount<MINIMUM_CHECK_COUNT || bCheckCount>MAXIMUM_CHECK_COUNT) return NULL;
+    if (bSuppportedAlgorithms<1 || bSuppportedAlgorithms>7) return NULL;
     pZKnState=(PZKN_STATE)malloc(sizeof(ZKN_STATE));
     if (pZKnState==NULL) return NULL;
+
     pZKnState->wDefaultVerticeCount=wVerticeCount;
     pZKnState->bCheckCount=bCheckCount;
     pZKnState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
@@ -51,6 +55,7 @@ PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8
 */
 void destroyZKnState(PZKN_STATE pZKnState)
 {
+    if (pZKnState==NULL) return;
     free(pZKnState->pbFLAG);
     if (pZKnState->pZKnGraph!=NULL) free(pZKnState->pZKnGraph->pbGraphData);
     free(pZKnState->pZKnGraph);
@@ -95,6 +100,19 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
     return (uint8_t *) pInitialSettingPacket;
 }
 
+/*
+    void freeDanglingPointer(void* pPointer);
+    description:
+        Free a pointer
+    arguments:
+        pPointer - pointer
+    return value:
+        N/A
+*/
+void freeDanglingPointer(void* pPointer){
+
+    free(pPointer);
+}
 /*
     uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize)
     description:
@@ -421,6 +439,7 @@ PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState,
     pProofConfigurationPacket->dwPackedMatrixSize=(uint32_t)dwPackedMatrixSize;
     memcpy(pProofConfigurationPacket->bPackedMatrixData,pbPackedMatrix,(ssize_t)dwPackedMatrixSize);
     free(pbPackedMatrix);
+    *pdwPacketSize=dwPacketSize;
     return pProofConfigurationPacket;
 }
 
@@ -1079,7 +1098,7 @@ PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKn
     PCHALLENGE_PACKET pChallengePacket;
     if (pZKnState==NULL || pZKnProtocolState==NULL) return NULL;
     if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete!=1) return NULL;
-    pChallengePacket=(PCHALLENGE_PACKET)malloc(sizeof(CHALLENGE_PACKET));
+    pChallengePacket=(PCHALLENGE_PACKET)calloc(1,sizeof(CHALLENGE_PACKET));
     if (pChallengePacket==NULL) return NULL;
     dwRandom=generateRandomUpTo64Bits(pZKnProtocolState->pLegendrePRNG,pZKnState->bCheckCount);
     bBitLength=pZKnState->bCheckCount;

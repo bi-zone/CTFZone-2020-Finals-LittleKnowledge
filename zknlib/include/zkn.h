@@ -188,6 +188,7 @@ typedef struct __FULL_KNOWLEDGE_FOR_STORAGE
 DLL_PUBLIC extern PZKN_STATE initializeZKnState(uint16_t verticeNumber, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms);
 DLL_PUBLIC PZKN_PROTOCOL_STATE initializeZKnProtocolState();
 DLL_PUBLIC uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState);
+DLL_PUBLIC void freeDanglingPointer(void* pPointer);
 DLL_PUBLIC uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize);
 DLL_PUBLIC PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize);
 DLL_PUBLIC uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint32_t dwDesiredSignatureSize);
