@@ -737,7 +737,7 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     uint32_t dwSingleCommitmentSize;
     PSHA256_COMMITMENT pSHA256Commitment;
     uint8_t* pSHA256;
-    dwSingleCommitmentSize=CRC32_COMMITMENT_HEADER_SIZE+pSingleProof->dwPackedMatrixSize;
+    dwSingleCommitmentSize=SHA256_COMMITMENT_HEADER_SIZE+pSingleProof->dwPackedMatrixSize;
     pSHA256Commitment=(PSHA256_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pSHA256Commitment==NULL) return NULL;
     pSHA256=sha256(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
@@ -747,7 +747,7 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     }
     memcpy(pSHA256Commitment->permutationSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
-    pSHA256=crc32(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+    pSHA256=sha256(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     if (pSHA256==NULL){
         free(pSHA256Commitment);
         return NULL;
@@ -920,7 +920,7 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
 
 
 /*
-    void freeCommitmentExtraInformation(PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation)
+    void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper, PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation)
     description:
         Free commitment extra information structure and its members
     arguments:
@@ -928,8 +928,14 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
     return value:
         N/A
 */
-void freeCommitmentExtraInformation(PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation){
+void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper,PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation){
     if (pCommitmentExtraInformation==NULL) return;
+    uint8_t bIndex;
+    PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* pArray;
+    pArray=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION*)pCommitmentExtraInformation->pbData;
+    for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+       free(pArray[bIndex]); 
+    }
     free(pCommitmentExtraInformation->pbData);
     free(pCommitmentExtraInformation);
 }
@@ -1275,11 +1281,7 @@ PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwComm
     qwChallengeRandom=pChallengePacket->qwRandom;
     if (pProofHelper==NULL || pCommitmentExtraInformation==NULL || pdwCommitmentSize==NULL) return NULL;
     for (bIndex=0; bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
-        if (dwDataOffset>=pCommitmentExtraInformation->dwDataSize){
-            free(pbReveals);
-            return NULL;
-        }
-        pCurrentReveal=createSingleAESReveal((uint8_t)(qwChallengeRandom&1),(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)pCommitmentExtraInformation->pbData + dwDataOffset,&dwCurrentUnpackSize);
+        pCurrentReveal=createSingleAESReveal((uint8_t)(qwChallengeRandom&1),((PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION*)(pCommitmentExtraInformation->pbData))[bIndex],&dwCurrentUnpackSize);
         qwChallengeRandom=qwChallengeRandom>>1;
         dwDataOffset=dwDataOffset+sizeof(SINGLE_AES_COMMITMENT_EXTRA_INFORMATION);
         if (pCurrentReveal==NULL){

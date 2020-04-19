@@ -205,6 +205,7 @@ DLL_PUBLIC uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnP
 DLL_PUBLIC PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, out uint32_t* pdwPacketSize);
 DLL_PUBLIC PREVEAL_PACKET createRevealPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper, PCHALLENGE_PACKET pChallengePacket, \
 PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwRevealPacketSize);
+DLL_PUBLIC void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper,PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation);
 DLL_PUBLIC uint8_t checkProof(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, PREVEAL_PACKET pRevealPacket, \
 uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason);
  
