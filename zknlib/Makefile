@@ -5,6 +5,8 @@ PRNG_IDIR=prng/include
 MATR_IDIR=matrices/include
 CC = gcc
 CFLAGS =-Wl,-z,relro,-z,now -Wall -Werror -fstack-protector-all -fpic -I$(IDIR) -I$(PRNG_IDIR) -I$(MATR_IDIR) -shared -s -fvisibility=hidden
+test: CFLAGS=-DENABLE_FOR_TEST -Wl,-z,relro,-z,now -Wall -Werror -fstack-protector-all -fpic -I$(IDIR) -I$(PRNG_IDIR) -I$(MATR_IDIR) -shared -s -fvisibility=hidden
+
 #LDFLAGS=-shared
 #TEST_CFLAGS =-Wl,-z,relro,-z,now -Wall -Werror -fstack-protector-all -fpic -I$(IDIR) -I$(PRNG_IDIR) -I$(MATR_IDIR) -s -fvisibility=hidden
 test_debug: CC = clang

@@ -16,6 +16,8 @@
 #define ERROR_REASON_NONE 0
 #define ERROR_REASON_SYSTEM 1
 #define ERROR_REASON_WRONG_VALUE 2
+#define ERROR_REASON_TOO_EARLY 3
+#define ERROR_REASON_CHEATING 4
 /*
     PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
     description:
@@ -29,17 +31,11 @@
 PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
 {
     PZKN_STATE pZKnState;
-    PLEGENDRE_PRNG plegendre_prng;
     pZKnState=(PZKN_STATE)malloc(sizeof(ZKN_STATE));
     if (pZKnState==NULL) return NULL;
     pZKnState->wDefaultVerticeCount=wVerticeCount;
     pZKnState->bCheckCount=bCheckCount;
     pZKnState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
-    plegendre_prng=initializePRNG(P);
-    if (plegendre_prng==NULL){
-        free(pZKnState);
-        return NULL;
-    }
     pZKnState->pbFLAG=NULL;
     pZKnState->pZKnGraph=NULL;
     return pZKnState;
@@ -442,15 +438,20 @@ PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState,
         ERROR - NULL
 */
 PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFIGURATION_PACKET pProofConfigurationPacket, uint32_t dwPacketSize, out uint8_t* pbErrorReason){
-    //IMPORTANT!!!
-    //TODO:
-    //Add check count and algorithm selection checks
     PPROOF_HELPER pProofHelper;
     uint8_t* pbUnpackedMatrix;
     uint16_t wDimension;
     *(pbErrorReason)=ERROR_REASON_NONE;
     if (pFullKnowledge==NULL || pProofConfigurationPacket==NULL) {
         *(pbErrorReason)=ERROR_REASON_SYSTEM;
+        return NULL;
+    }
+    if (pProofConfigurationPacket->bCheckCount < MINIMUM_CHECK_COUNT || pProofConfigurationPacket->bCheckCount > MAXIMUM_CHECK_COUNT){
+        *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+        return NULL;
+    }
+    if (pProofConfigurationPacket->supportedAlgorithms.supportedAlgsCode==0){
+        *pbErrorReason=ERROR_REASON_WRONG_VALUE;
         return NULL;
     }
     pbUnpackedMatrix=unpackMatrix((uint16_t)pProofConfigurationPacket->dwPackedMatrixSize, pProofConfigurationPacket->bPackedMatrixData,&wDimension);
@@ -482,6 +483,18 @@ PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFI
     return pProofHelper;
 }
 /*
+    void freeProofHelper(PPROOF_HELPER pProofHelper)
+    description:
+        Free Proof Helper
+    arguments:
+        pProofHelper - pointer to proof helper
+    return value:
+        N/A
+*/
+void freeProofHelper(PPROOF_HELPER pProofHelper){
+    free(pProofHelper);
+}
+/*
     PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper);
     description:
         Create everything needed for a single proof (Permutation, Permuted Graph Matrix, Permuted Cycle Matrix)
@@ -506,6 +519,9 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         free(pSingleProof);
         return NULL;
     }
+#ifdef ENABLE_FOR_TEST
+    printf("Started permutation\n");
+#endif
     pbPermutedGraphMatrix=permuteMatrix(pbPermutationMatrix,pProofHelper->pFullKnowledge->pbGraphMatrix,pProofHelper->pFullKnowledge->wDimension);
     if (pbPermutedGraphMatrix==NULL){
         free(pSingleProof);
@@ -519,6 +535,10 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         free(pbPermutedGraphMatrix);
         return NULL;
     }
+    
+#ifdef ENABLE_FOR_TEST
+    printf("Ended permutation\n");
+#endif
     pbPackedMatrix=packMatrix(pbPermutationMatrix,pProofHelper->pFullKnowledge->wDimension,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL){
         free(pSingleProof);
@@ -591,6 +611,9 @@ PSINGLE_PROOF* createProofsForOneRound(PPROOF_HELPER pProofHelper){
     pProofArray=(PSINGLE_PROOF*)malloc(sizeof(SINGLE_PROOF)*(uint32_t)(pProofHelper->bCheckCount));
     if (pProofArray==NULL) return NULL;
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+#ifdef ENABLE_FOR_TEST
+        printf("Currently creating proof %hhd\n",bIndex);
+#endif
         pSingleProof=createSingleProof(pProofHelper);
         if (pSingleProof==NULL) break;
         pProofArray[bIndex]=pSingleProof;
@@ -682,6 +705,9 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     uint8_t* pSingleCommitment;
     uint8_t bIndex;
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+#ifdef ENABLE_FOR_TEST
+        printf("Currently creating commitment %hhd\n",bIndex);
+#endif
         pSingleCommitment=createSingleCRC32Commitment(pProofArray[bIndex], &dwSingleCommitmentSize);
         if (pSingleCommitment==NULL){
             free(pCommitmentArray);
@@ -712,7 +738,7 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     PSHA256_COMMITMENT pSHA256Commitment;
     uint8_t* pSHA256;
     dwSingleCommitmentSize=CRC32_COMMITMENT_HEADER_SIZE+pSingleProof->dwPackedMatrixSize;
-    pSHA256Commitment=(PCRC32_COMMITMENT)malloc(dwSingleCommitmentSize);
+    pSHA256Commitment=(PSHA256_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pSHA256Commitment==NULL) return NULL;
     pSHA256=sha256(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     if (pSHA256==NULL){
@@ -729,7 +755,7 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     memcpy(pSHA256Commitment->permutedCycleSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
     pSHA256Commitment->dwPackedPermutedMatrixSize=pSingleProof->dwPackedMatrixSize;
-    memcpy(pSHA256Commitment->packedPermutedMatrix,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
+    memcpy(pSHA256Commitment->packedPermutedGraphMatrix,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     *pdwSingleCommitmentSize=dwSingleCommitmentSize;
     return (uint8_t*)pSHA256Commitment;
 }
@@ -820,7 +846,7 @@ out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformat
         free(pExtraInformation);
         return NULL;
     }
-    pAESCommitment->dwPackedPermutationMatrixSize=pSingleProof->dwPackedMatrixSize;
+    pAESCommitment->dwPackedPermutedMatrixSize=pSingleProof->dwPackedMatrixSize;
     pAESCommitment->dwSingleCiphertextPlusIVSize=dwEncryptedCycleDataSize;
     memcpy(pAESCommitment->commitmentData,pbEncryptedPermutationData,dwEncryptedPermutationDataSize);
     memcpy(pAESCommitment->commitmentData+dwEncryptedPermutationDataSize,pbEncryptedCycleData,dwEncryptedCycleDataSize);
@@ -858,13 +884,14 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
     pAESExtraInformationArray=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION*)malloc(sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount);
     if (pAESExtraInformationArray==NULL) return NULL;
     pCommitmentExtraInformation=(PCOMMITMENT_EXTRA_INFORMATION)malloc(sizeof(COMMITMENT_EXTRA_INFORMATION));
-    pCommitmentExtraInformation->dwDataSize=sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount;
-    pCommitmentExtraInformation->pbData=(uint32_t*)pAESExtraInformationArray;
+    
     *ppCommitmentExtraInformation=pCommitmentExtraInformation;
-    if (pCommitmentExtraInformation=NULL){
+    if (pCommitmentExtraInformation==NULL){
         free(pAESExtraInformationArray);
         return NULL;
     }
+    pCommitmentExtraInformation->dwDataSize=sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount;
+    pCommitmentExtraInformation->pbData=(uint8_t*)pAESExtraInformationArray;
     for(bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
         pbCurrentCommitment=(uint8_t*)createSingleAESCommitment(pProofArray[bIndex],&dwCurrentCommitmentSize,&pAESExtraInformationArray[bIndex]);
         if (pbCurrentCommitment==NULL){
@@ -904,7 +931,7 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
 void freeCommitmentExtraInformation(PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation){
     if (pCommitmentExtraInformation==NULL) return;
     free(pCommitmentExtraInformation->pbData);
-    fre(pCommitmentExtraInformation);
+    free(pCommitmentExtraInformation);
 }
 
 /*
@@ -929,7 +956,8 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
     uint32_t dwCommitmentDataSize;
     uint32_t dwResultingPacketSize;
     uint8_t* pbCommitmentData;
-    if (pProofArray==NULL || pProofHelper==NULL) return NULL;
+    if (pProofArray==NULL || pProofHelper==NULL || ppCommitmentExtraInformation==NULL) return NULL;
+    *ppCommitmentExtraInformation=NULL;
     commitmentAlgs=pProofHelper->supportedAlgorithms;
     if(commitmentAlgs.isCRC32Supported){
         pbCommitmentData=createCRC32CommitmentRound(pProofArray,pProofHelper,&dwCommitmentDataSize);
@@ -1023,6 +1051,7 @@ uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolStat
     if (pZKnProtocolState->pbCommitmentData==NULL) return ERROR_SYSTEM;
     memcpy(pZKnProtocolState->pbCommitmentData,pbCommitmentData,dwCommitmentDataSize);
     pZKnProtocolState->dwCommitmentDataSize=dwCommitmentDataSize;
+    pZKnProtocolState->protocolProgress.isCommitmentStageComplete=1;
     return SUCCESS;
 }
 
@@ -1043,131 +1072,791 @@ PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKn
     uint8_t bBitLength;
     PCHALLENGE_PACKET pChallengePacket;
     if (pZKnState==NULL || pZKnProtocolState==NULL) return NULL;
+    if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete!=1) return NULL;
     pChallengePacket=(PCHALLENGE_PACKET)malloc(sizeof(CHALLENGE_PACKET));
     if (pChallengePacket==NULL) return NULL;
     dwRandom=generateRandomUpTo64Bits(pZKnProtocolState->pLegendrePRNG,pZKnState->bCheckCount);
     bBitLength=pZKnState->bCheckCount;
-    pZKnProtocolState->dwRandom=dwRandom;
-    pChallengePacket->dwRandom=dwRandom;
+    pZKnProtocolState->qwRandom=dwRandom;
+    pChallengePacket->qwRandom=dwRandom;
     pChallengePacket->bBitCount=bBitLength;
     *pdwPacketSize=sizeof(CHALLENGE_PACKET);
+    pZKnProtocolState->protocolProgress.isRandomnessStageComplete=1;
     return pChallengePacket;
 }
 
-PCRC32_UNPACK_COMMITMENT createSingleCRC32UnpackCommitment(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwUnpackCommitmentSize){
-    PCRC32_UNPACK_COMMITMENT pCRC32UnpackCommitment;
-    if (pSingleProof==NULL || pdwUnpackCommitmentSize==NULL) return NULL;
-    pCRC32UnpackCommitment=(PCRC32_COMMITMENT)malloc(pSingleProof->dwPackedMatrixSize+CRC32_UNPACK_COMMITMENT_HEADER_SIZE);
-    if (pCRC32UnpackCommitment==NULL) return NULL;
+/*
+    PCRC32_REVEAL createSingleCRC32Reveal(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwRevealSize)
+    description:
+        Create single reveal for CRC32
+    arguments:
+        pSingleProof - pointer to proof information
+        bBut - chosen bit
+        pdwRevealSize - for saving output size
+    return value:
+        SUCCESS - pointer to commitment data
+        FAIL - NULL
+*/
+PCRC32_REVEAL createSingleCRC32Reveal(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwRevealSize){
+    PCRC32_REVEAL pCRC32Reveal;
+    if (pSingleProof==NULL || pdwRevealSize==NULL) return NULL;
+    pCRC32Reveal=(PCRC32_REVEAL)malloc(pSingleProof->dwPackedMatrixSize+CRC32_REVEAL_HEADER_SIZE);
+    if (pCRC32Reveal==NULL) return NULL;
     if (bBit==0){
-        memcpy(pCRC32UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pCRC32Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     }else{
-        memcpy(pCRC32UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pCRC32Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     }
-    pCRC32UnpackCommitment->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
-    *pdwUnpackCommitmentSize=pSingleProof->dwPackedMatrixSize+CRC32_UNPACK_COMMITMENT_HEADER_SIZE;
-    return pCRC32UnpackCommitment;
+    pCRC32Reveal->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
+    *pdwRevealSize=pSingleProof->dwPackedMatrixSize+CRC32_REVEAL_HEADER_SIZE;
+    return pCRC32Reveal;
 }
 
-uint8_t* createCRC32UnpackCommitmentRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwUnpackedCommitmentSize){
-    uint8_t* pbUnpackCommitmentRound=NULL;
-    uint32_t dwTotalUnpackCommitmentSize=0;
-    uint32_t dwCurrentUnpackCommitmentSize;
+/*
+    uint8_t* createCRC32RevealRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwRevealSize)
+    description:
+        Create full round worth of crc32 reveal
+    arguments:
+        pProofArray - pointer to array of single proofs
+        pChallengePacket - pointert to challenge packet
+        pdwRevealSize - pointer for outputing size for ouput data
+    return value:
+        SUCCESS - pointer to full reveal round
+        FAIL - NULL
+*/
+uint8_t* createCRC32RevealRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwRevealSize){
+    uint8_t* pbRevealRound=NULL;
+    uint32_t dwTotalRevealSize=0;
+    uint32_t dwCurrentRevealSize;
     uint8_t bIndex;
-    uint64_t dwCurrentBit;
-    PCRC32_UNPACK_COMMITMENT pSingleUnpackCommitment;
-    if (pProofArray==NULL || pChallengePacket==NULL || pdwUnpackedCommitmentSize==NULL ) return NULL;
-    dwCurrentBit=pChallengePacket->dwRandom;
+    uint64_t qwCurrentBit;
+    PCRC32_REVEAL pSingleReveal;
+    if (pProofArray==NULL || pChallengePacket==NULL || pdwRevealSize==NULL ) return NULL;
+    qwCurrentBit=pChallengePacket->qwRandom;
     for (bIndex=0;bIndex<pChallengePacket->bBitCount; bIndex=bIndex+1){
-        pSingleUnpackCommitment=createSingleCRC32UnpackCommitment(pProofArray[bIndex],(uint8_t)(dwCurrentBit&1),&dwCurrentUnpackCommitmentSize);
-        dwCurrentBit=dwCurrentBit>>1;
-        if (pSingleUnpackCommitment==NULL){
-            free(pbUnpackCommitmentRound);
+        pSingleReveal=createSingleCRC32Reveal(pProofArray[bIndex],(uint8_t)(qwCurrentBit&1),&dwCurrentRevealSize);
+        qwCurrentBit=qwCurrentBit>>1;
+        if (pSingleReveal==NULL){
+            free(pbRevealRound);
             return NULL;
         }
-        pbUnpackCommitmentRound=(uint8_t*)realloc(pbUnpackCommitmentRound,dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize);
-        if (pbUnpackCommitmentRound==NULL) {
-            free(pSingleUnpackCommitment);
+        pbRevealRound=(uint8_t*)realloc(pbRevealRound,dwTotalRevealSize+dwCurrentRevealSize);
+        if (pbRevealRound==NULL) {
+            free(pSingleReveal);
             return NULL;
         }
-        memcpy(pbUnpackCommitmentRound+dwTotalUnpackCommitmentSize,(uint8_t*)pSingleUnpackCommitment,dwCurrentUnpackCommitmentSize);
-        free(pSingleUnpackCommitment);
-        dwTotalUnpackCommitmentSize=dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize;
+        memcpy(pbRevealRound+dwTotalRevealSize,(uint8_t*)pSingleReveal,dwCurrentRevealSize);
+        free(pSingleReveal);
+        dwTotalRevealSize=dwTotalRevealSize+dwCurrentRevealSize;
     }
-    *pdwUnpackedCommitmentSize=dwTotalUnpackCommitmentSize;
-    return pbUnpackCommitmentRound;
+    *pdwRevealSize=dwTotalRevealSize;
+    return pbRevealRound;
 }
 
-PSHA256_UNPACK_COMMITMENT createSingleSHA256UnpackCommitment(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwUnpackCommitmentSize){
-    PSHA256_UNPACK_COMMITMENT pSHA256UnpackCommitment;
-    if (pSingleProof==NULL || pdwUnpackCommitmentSize==NULL) return NULL;
-    pSHA256UnpackCommitment=(PCRC32_COMMITMENT)malloc(pSingleProof->dwPackedMatrixSize+SHA256_UNPACK_COMMITMENT_HEADER_SIZE);
-    if (pSHA256UnpackCommitment==NULL) return NULL;
+/*
+    PCRC32_UNPACK_COMMITMENT createSingleSHA256Reveal(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwRevealSize)
+    description:
+        Create single reveal for SHA256
+    arguments:
+        pSingleProof - pointer to proof information
+        bBut - chosen bit
+        pdwRevealSize - for saving output size
+    return value:
+        SUCCESS - pointer to commitment data
+        FAIL - NULL
+*/
+PSHA256_REVEAL createSingleSHA256Reveal(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwRevealSize){
+    PSHA256_REVEAL pSHA256Reveal;
+    if (pSingleProof==NULL || pdwRevealSize==NULL) return NULL;
+    pSHA256Reveal=(PSHA256_REVEAL)malloc(pSingleProof->dwPackedMatrixSize+SHA256_REVEAL_HEADER_SIZE);
+    if (pSHA256Reveal==NULL) return NULL;
     if (bBit==0){
-        memcpy(pSHA256UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pSHA256Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     }else{
-        memcpy(pSHA256UnpackCommitment->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pSHA256Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     }
-    pSHA256UnpackCommitment->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
-    *pdwUnpackCommitmentSize=pSingleProof->dwPackedMatrixSize+SHA256_UNPACK_COMMITMENT_HEADER_SIZE;
-    return pSHA256UnpackCommitment;
+    pSHA256Reveal->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
+    *pdwRevealSize=pSingleProof->dwPackedMatrixSize+SHA256_REVEAL_HEADER_SIZE;
+    return pSHA256Reveal;
 }
 
-uint8_t* createSHA256UnpackCommitmentRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwUnpackedCommitmentSize){
-    uint8_t* pbUnpackCommitmentRound=NULL;
-    uint32_t dwTotalUnpackCommitmentSize=0;
-    uint32_t dwCurrentUnpackCommitmentSize;
+/*
+    uint8_t* createSHA256RevealRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwRevealSize)
+    description:
+        Create full round worth of sha256 reveal
+    arguments:
+        pProofArray - pointer to array of single proofs
+        pChallengePacket - pointert to challenge packet
+        pdwRevealSize - pointer for outputing size for ouput data
+    return value:
+        SUCCESS - pointer to full reveal round
+        FAIL - NULL
+*/
+uint8_t* createSHA256RevealRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pChallengePacket, out uint32_t* pdwRevealSize){
+    uint8_t* pbRevealRound=NULL;
+    uint32_t dwTotalRevealSize=0;
+    uint32_t dwCurrentRevealSize;
     uint8_t bIndex;
-    uint64_t dwCurrentBit;
-    PSHA256_UNPACK_COMMITMENT pSingleUnpackCommitment;
-    if (pProofArray==NULL || pChallengePacket==NULL || pdwUnpackedCommitmentSize==NULL ) return NULL;
-    dwCurrentBit=pChallengePacket->dwRandom;
+    uint64_t qwCurrentBit;
+    PSHA256_REVEAL pSingleReveal;
+    if (pProofArray==NULL || pChallengePacket==NULL || pdwRevealSize==NULL ) return NULL;
+    qwCurrentBit=pChallengePacket->qwRandom;
     for (bIndex=0;bIndex<pChallengePacket->bBitCount; bIndex=bIndex+1){
-        pSingleUnpackCommitment=createSingleSHA256UnpackCommitment(pProofArray[bIndex],(uint8_t)(dwCurrentBit&1),&dwCurrentUnpackCommitmentSize);
-        dwCurrentBit=dwCurrentBit>>1;
-        if (pSingleUnpackCommitment==NULL){
-            free(pbUnpackCommitmentRound);
+        pSingleReveal=createSingleSHA256Reveal(pProofArray[bIndex],(uint8_t)(qwCurrentBit&1),&dwCurrentRevealSize);
+        qwCurrentBit=qwCurrentBit>>1;
+        if (pSingleReveal==NULL){
+            free(pbRevealRound);
             return NULL;
         }
-        pbUnpackCommitmentRound=(uint8_t*)realloc(pbUnpackCommitmentRound,dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize);
-        if (pbUnpackCommitmentRound==NULL) {
-            free(pSingleUnpackCommitment);
+        pbRevealRound=(uint8_t*)realloc(pbRevealRound,dwTotalRevealSize+dwCurrentRevealSize);
+        if (pbRevealRound==NULL) {
+            free(pSingleReveal);
             return NULL;
         }
-        memcpy(pbUnpackCommitmentRound+dwTotalUnpackCommitmentSize,(uint8_t*)pSingleUnpackCommitment,dwCurrentUnpackCommitmentSize);
-        free(pSingleUnpackCommitment);
-        dwTotalUnpackCommitmentSize=dwTotalUnpackCommitmentSize+dwCurrentUnpackCommitmentSize;
+        memcpy(pbRevealRound+dwTotalRevealSize,(uint8_t*)pSingleReveal,dwCurrentRevealSize);
+        free(pSingleReveal);
+        dwTotalRevealSize=dwTotalRevealSize+dwCurrentRevealSize;
     }
-    *pdwUnpackedCommitmentSize=dwTotalUnpackCommitmentSize;
-    return pbUnpackCommitmentRound;
+    *pdwRevealSize=dwTotalRevealSize;
+    return pbRevealRound;
 }
 
-PAES_UNPACK_COMMITMENT createSingleAESUnpackCommitment(uint8_t bBit, PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION pSingleAESCommitmentExtraInformation, \
-out uint32_t* pdwUnpackCommitmentSize){
-    PAES_UNPACK_COMMITMENT pAESUnpackCommitment;
-    if (pSingleAESCommitmentExtraInformation==NULL || pdwUnpackCommitmentSize==NULL) return NULL;
-
+/*
+    PAES_REVEAL createSingleAESReveal(uint8_t bBit, PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION pSingleAESCommitmentExtraInformation, \
+        out uint32_t* pdwRevealSize)
+    description:
+        Create a single commitment unpacker with AES
+    arguments:
+        bBit - challenge bit
+        pSingleAESCommitmentExtraInformation - AES keys
+        pdwRevealSize - pointer for outputing result size
+    return value:
+        SUCCESS - pointer to aes reveal data
+        FAIL - NULL 
+*/
+PAES_REVEAL createSingleAESReveal(uint8_t bBit, PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION pSingleAESCommitmentExtraInformation, \
+out uint32_t* pdwRevealSize){
+    PAES_REVEAL pAESReveal;
+    if (pSingleAESCommitmentExtraInformation==NULL || pdwRevealSize==NULL) return NULL;
+    pAESReveal=(PAES_REVEAL)malloc(sizeof(AES_REVEAL));
+    if (pAESReveal==NULL) return NULL;
+    if (bBit==0){
+        memcpy(pAESReveal->revealingKey,pSingleAESCommitmentExtraInformation->permutationKey,AES128_KEY_SIZE);
+    }else{
+        memcpy(pAESReveal->revealingKey,pSingleAESCommitmentExtraInformation->permutedCycleKey,AES128_KEY_SIZE);
+    }
+    *pdwRevealSize=sizeof(AES_REVEAL);
+    return pAESReveal;
 }
 
-PUNPACK_COMMITMENT_PACKET createUnpackCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper, PCHALLENGE_PACKET pChallengePacket, \
-PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwUnpackCommitmentPacketSize){
-    if(pProofArray==NULL || pProofHelper==NULL || pChallengePacket==NULL || pdwUnpackCommitmentPacketSize==NULL) return NULL;
+/*
+    uint8_t* createAESRevealRound(PPROOF_HELPER pProofHelper,PCHALLENGE_PACKET pChallengePacket, \
+        PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwCommitmentSize)
+    description:
+        Create full round worth of AES commitment reveal information
+    arguments:
+        pProofHelper - parameters fo rproofs
+        pChallengePacket - challenge packet
+        pCommitmentExtraInformation - previously used AES keys
+        pdwCommitmentSize - pointer for outputing return data size
+    return value:
+        SUCCESS - pointer to bytes containint reveal information
+        FAIL - NULL
+*/
+uint8_t* createAESRevealRound(PPROOF_HELPER pProofHelper,PCHALLENGE_PACKET pChallengePacket, \
+PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwCommitmentSize){
+    PAES_REVEAL pCurrentReveal;
+    uint8_t* pbReveals=NULL;
+    uint32_t dwTotalSize=0;
+    uint32_t dwCurrentUnpackSize;
+    uint8_t bIndex;
+    uint64_t qwChallengeRandom;
+    uint32_t dwDataOffset=0;
+    qwChallengeRandom=pChallengePacket->qwRandom;
+    if (pProofHelper==NULL || pCommitmentExtraInformation==NULL || pdwCommitmentSize==NULL) return NULL;
+    for (bIndex=0; bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+        if (dwDataOffset>=pCommitmentExtraInformation->dwDataSize){
+            free(pbReveals);
+            return NULL;
+        }
+        pCurrentReveal=createSingleAESReveal((uint8_t)(qwChallengeRandom&1),(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)pCommitmentExtraInformation->pbData + dwDataOffset,&dwCurrentUnpackSize);
+        qwChallengeRandom=qwChallengeRandom>>1;
+        dwDataOffset=dwDataOffset+sizeof(SINGLE_AES_COMMITMENT_EXTRA_INFORMATION);
+        if (pCurrentReveal==NULL){
+            free(pbReveals);
+            return NULL;
+        }
+        pbReveals=realloc(pbReveals,dwTotalSize+dwCurrentUnpackSize);
+        if (pbReveals==NULL){
+            free(pCurrentReveal);
+            return NULL;
+        }
+        memcpy(pbReveals+dwTotalSize,pCurrentReveal,dwCurrentUnpackSize);
+        dwTotalSize=dwTotalSize+dwCurrentUnpackSize;
+        free(pCurrentReveal);
+    }
+    *pdwCommitmentSize=dwTotalSize;
+    return pbReveals;
+}
+
+/*
+    PREVEAL_PACKET createRevealPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper, PCHALLENGE_PACKET pChallengePacket, \
+        PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwRevealPacketSize)
+    description:
+        Create a packet for revealing commitments
+    arguments:
+        pProofArray - array of proofs
+        pProofHelper - additional information for proofs
+        pChallengePacket - challenge packet
+        pCommitmentExtraInformation - extra information (needed for AES, otherwise NULL)
+        pdwRevealPacketSize - for outputing size of return data
+    return value:
+        SUCCESS - packet with information for revealing commitments
+        FAIL - NULL
+*/
+PREVEAL_PACKET createRevealPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper, PCHALLENGE_PACKET pChallengePacket, \
+PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwRevealPacketSize){
+    PREVEAL_PACKET pRevealPacket;
+    uint8_t* pbRevealData;
+    uint32_t dwRevealDataSize;
+    uint32_t dwPacketSize;
+    if(pProofArray==NULL || pProofHelper==NULL || pChallengePacket==NULL || pdwRevealPacketSize==NULL) return NULL;
     if (pChallengePacket->bBitCount!=pProofHelper->bCheckCount) return NULL;
-    if (pProofHelper->supportedAlgorithms.isCRC32Supported){
-
-    }else{
-        if(pProofHelper->supportedAlgorithms.isSHA256Supported){
-
+    if (pProofHelper->supportedAlgorithms.isCRC32Supported||pProofHelper->supportedAlgorithms.isSHA256Supported){
+        if(pProofHelper->supportedAlgorithms.isCRC32Supported){
+            pbRevealData=createCRC32RevealRound(pProofArray,pChallengePacket,&dwRevealDataSize);
         }else{
-            if(pProofHelper->supportedAlgorithms.isAESSupported){
-
-            }else{
+            pbRevealData=createSHA256RevealRound(pProofArray,pChallengePacket,&dwRevealDataSize);
+        }
+        if (pbRevealData==NULL) return NULL;
+        dwPacketSize=REVEAL_PACKET_HEADER_SIZE+dwRevealDataSize;
+        pRevealPacket=(PREVEAL_PACKET)malloc(dwPacketSize);
+        if (pRevealPacket==NULL){
+            free(pbRevealData);
+            return NULL;
+        } 
+        pRevealPacket->bCommitmentCount=pProofHelper->bCheckCount;
+        pRevealPacket->commitmentType.supportedAlgsCode=0;
+        if(pProofHelper->supportedAlgorithms.isCRC32Supported){
+            pRevealPacket->commitmentType.isCRC32Supported=1;
+        }else{
+            pRevealPacket->commitmentType.isSHA256Supported=1;
+        }
+        pRevealPacket->dwDataSize=dwRevealDataSize;
+        memcpy(pRevealPacket->revealData,pbRevealData,dwRevealDataSize);
+        free(pbRevealData);
+        *pdwRevealPacketSize=dwPacketSize;
+        return pRevealPacket;
+    }else{
+        if(pProofHelper->supportedAlgorithms.isAESSupported){
+            pbRevealData=createAESRevealRound(pProofHelper,pChallengePacket,pCommitmentExtraInformation,&dwRevealDataSize);
+            if (pbRevealData==NULL) return NULL;
+            dwPacketSize=REVEAL_PACKET_HEADER_SIZE+dwRevealDataSize;
+            pRevealPacket=(PREVEAL_PACKET)malloc(dwPacketSize);
+            if (pRevealPacket==NULL){
+                free(pbRevealData);
                 return NULL;
+            } 
+            pRevealPacket->bCommitmentCount=pProofHelper->bCheckCount;
+            pRevealPacket->commitmentType.supportedAlgsCode=0;
+            pRevealPacket->commitmentType.isAESSupported=1;
+            pRevealPacket->dwDataSize=dwRevealDataSize;
+            memcpy(pRevealPacket->revealData,pbRevealData,dwRevealDataSize);
+            free(pbRevealData);
+            *pdwRevealPacketSize=dwPacketSize;
+            return pRevealPacket;
+        }else{
+            return NULL;
+        }
+    }
+}
+
+/*
+    uint8_t checkCRC32Proof(PZKN_STATE pZKnState,uint64_t qwChallengeRandom, uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize, \
+        uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason)
+    description:
+        Check CRC32 Proof
+    arguments:
+        pZKnState - zero knowledge state
+        qwChallengeRandom - challenge bits
+        pbCommitmentData - commitments
+        dwCommitmentDataSize - commitment data size
+        pbRevealData - commitment revealing data
+        dwRevealDataSize - reveal data size
+        pbErrorReason - pointer for outputing error reasons
+    return value:
+        SUCCESS - SUCCESS
+        FAIL - ERROR_SYSTEM or ERROR_BAD_VALUE
+
+*/
+uint8_t checkCRC32Proof(PZKN_STATE pZKnState,uint64_t qwChallengeRandom, uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize, \
+uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
+    PCRC32_COMMITMENT pCRC32Commitment;
+    PCRC32_REVEAL pCRC32Reveal;
+    uint8_t* pbBuffer;
+    uint32_t dwCommitmentDataLeft;
+    uint32_t dwRevealDataLeft;
+    uint8_t bIndex;
+    uint64_t qwChallengeBit;
+    uint8_t* pbCRC32;
+    uint8_t* pbUnpackedMatrix;
+    uint8_t* pbUnpackedPermutedGraphMatrix;
+    uint16_t wCheckDimension, wPermutedGraphDimension;
+    dwCommitmentDataLeft=dwCommitmentDataSize;
+    dwRevealDataLeft=dwRevealDataSize;
+    qwChallengeBit=qwChallengeRandom;
+    pCRC32Commitment=(PCRC32_COMMITMENT)pbCommitmentData;
+    pCRC32Reveal=(PCRC32_REVEAL)pbRevealData;
+    for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
+        //Checking under/overflows in commitment record
+        if ((pCRC32Commitment->dwPackedPermutedMatrixSize+CRC32_COMMITMENT_HEADER_SIZE)>dwCommitmentDataLeft){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
+        //Checking under/overflows in reveal record
+        if ((pCRC32Reveal->dwPackedPermutationOrCycleSize+CRC32_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
+        //Computing CRC32
+        pbCRC32=crc32(pCRC32Reveal->packedPermutationOrCycle,pCRC32Reveal->dwPackedPermutationOrCycleSize);
+        if (pbCRC32==NULL){
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Checking CRC32
+        if((qwChallengeBit&1)==0){
+            if (memcmp(pCRC32Commitment->permutationCRC32,pbCRC32,CRC32_SIZE)!=0){
+                free(pbCRC32);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+        }else{
+            if (memcmp(pCRC32Commitment->permutedCycleCRC32,pbCRC32,CRC32_SIZE)!=0){
+                free(pbCRC32);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
             }
         }
+        free(pbCRC32);
+        //Unpacking reveal matrix
+        pbUnpackedMatrix=unpackMatrix(pCRC32Reveal->dwPackedPermutationOrCycleSize,pCRC32Reveal->packedPermutationOrCycle,&wCheckDimension);
+        if (pbUnpackedMatrix==NULL){
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Unpacking permuted graph matrix
+        pbUnpackedPermutedGraphMatrix=unpackMatrix(pCRC32Commitment->dwPackedPermutedMatrixSize,pCRC32Commitment->packedPermutedGraphMatrix,&wPermutedGraphDimension);
+        if (pbUnpackedPermutedGraphMatrix==NULL){
+            free(pbUnpackedMatrix);
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Checking dimensions are the same everywhere
+        if (wCheckDimension!=pZKnState->pZKnGraph->wVerticeCount || wCheckDimension!=wPermutedGraphDimension){
+            free(pbUnpackedMatrix);
+            free(pbUnpackedPermutedGraphMatrix);
+            *pbErrorReason=ERROR_REASON_CHEATING;
+            return ERROR_SYSTEM;
+        }
+        if((qwChallengeBit&1)==0){
+            //if given permutation matrix, we need to check permutation is correct
+            pbBuffer=permuteMatrix(pbUnpackedMatrix,pZKnState->pZKnGraph->pbGraphData,wCheckDimension);
+            if (pbBuffer==NULL){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                *pbErrorReason=ERROR_REASON_SYSTEM;
+                return ERROR_SYSTEM;
+            }
+            if (memcmp(pbBuffer,pbUnpackedPermutedGraphMatrix,pZKnState->pZKnGraph->dwMatrixSize)!=0){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                free(pbBuffer);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+            free(pbBuffer);
+        }else{
+            //if it's the cycle check, we need to check it's hamiltonian
+            if (checkHamiltonianCycle(pbUnpackedPermutedGraphMatrix,pbUnpackedMatrix,wCheckDimension)==1){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+        }
+        //We passed this challenge
+        free(pbUnpackedMatrix);
+        free(pbUnpackedPermutedGraphMatrix);
+        //Next challenge bit
+        qwChallengeBit=qwChallengeBit>>1;
+        //Update data left   
+        dwCommitmentDataLeft=dwCommitmentDataLeft-(pCRC32Commitment->dwPackedPermutedMatrixSize+CRC32_COMMITMENT_HEADER_SIZE);
+        dwRevealDataLeft=dwRevealDataLeft-(pCRC32Reveal->dwPackedPermutationOrCycleSize+CRC32_REVEAL_HEADER_SIZE);
+        //Go to next entries
+        pCRC32Commitment=(PCRC32_COMMITMENT)(((uint8_t*)pCRC32Commitment)+pCRC32Commitment->dwPackedPermutedMatrixSize+CRC32_COMMITMENT_HEADER_SIZE);
+        pCRC32Reveal=(PCRC32_REVEAL)(((uint8_t*)pCRC32Reveal)+pCRC32Reveal->dwPackedPermutationOrCycleSize+CRC32_REVEAL_HEADER_SIZE);
     }
+    //Proof worked
+    *pbErrorReason=ERROR_REASON_NONE;
+    return SUCCESS;
 }
 
+/*
+    uint8_t checkSHA256Proof(PZKN_STATE pZKnState,uint64_t qwChallengeRandom, uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize, \
+        uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason)
+    description:
+        Check SHA256 Proof
+    arguments:
+        pZKnState - zero knowledge state
+        qwChallengeRandom - challenge bits
+        pbCommitmentData - commitments
+        dwCommitmentDataSize - commitment data size
+        pbRevealData - commitment revealing data
+        dwRevealDataSize - reveal data size
+        pbErrorReason - pointer for outputing error reasons
+    return value:
+        SUCCESS - SUCCESS
+        FAIL - ERROR_SYSTEM or ERROR_BAD_VALUE
+
+*/
+uint8_t checkSHA256Proof(PZKN_STATE pZKnState,uint64_t qwChallengeRandom, uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize, \
+uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
+    PSHA256_COMMITMENT pSHA256Commitment;
+    PSHA256_REVEAL pSHA256Reveal;
+    uint8_t* pbBuffer;
+    uint32_t dwCommitmentDataLeft;
+    uint32_t dwRevealDataLeft;
+    uint8_t bIndex;
+    uint64_t qwChallengeBit;
+    uint8_t* pbSHA256;
+    uint8_t* pbUnpackedMatrix;
+    uint8_t* pbUnpackedPermutedGraphMatrix;
+    uint16_t wCheckDimension, wPermutedGraphDimension;
+    dwCommitmentDataLeft=dwCommitmentDataSize;
+    dwRevealDataLeft=dwRevealDataSize;
+    qwChallengeBit=qwChallengeRandom;
+    pSHA256Commitment=(PSHA256_COMMITMENT)pbCommitmentData;
+    pSHA256Reveal=(PSHA256_REVEAL)pbRevealData;
+    for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
+        //Checking under/overflows in commitment record
+        if ((pSHA256Commitment->dwPackedPermutedMatrixSize+SHA256_COMMITMENT_HEADER_SIZE)>dwCommitmentDataLeft){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
+        //Checking under/overflows in reveal record
+        if ((pSHA256Reveal->dwPackedPermutationOrCycleSize+SHA256_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
+        //Computing SHA256
+        pbSHA256=sha256(pSHA256Reveal->packedPermutationOrCycle,pSHA256Reveal->dwPackedPermutationOrCycleSize);
+        if (pbSHA256==NULL){
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Checking SHA256
+        if((qwChallengeBit&1)==0){
+            if (memcmp(pSHA256Commitment->permutationSHA256,pbSHA256,SHA256_SIZE)!=0){
+                free(pbSHA256);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+        }else{
+            if (memcmp(pSHA256Commitment->permutedCycleSHA256,pbSHA256,SHA256_SIZE)!=0){
+                free(pbSHA256);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+        }
+        free(pbSHA256);
+        //Unpacking reveal matrix
+        pbUnpackedMatrix=unpackMatrix(pSHA256Reveal->dwPackedPermutationOrCycleSize,pSHA256Reveal->packedPermutationOrCycle,&wCheckDimension);
+        if (pbUnpackedMatrix==NULL){
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Unpacking permuted graph matrix
+        pbUnpackedPermutedGraphMatrix=unpackMatrix(pSHA256Commitment->dwPackedPermutedMatrixSize,pSHA256Commitment->packedPermutedGraphMatrix,&wPermutedGraphDimension);
+        if (pbUnpackedPermutedGraphMatrix==NULL){
+            free(pbUnpackedMatrix);
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Checking dimensions are the same everywhere
+        if (wCheckDimension!=pZKnState->pZKnGraph->wVerticeCount || wCheckDimension!=wPermutedGraphDimension){
+            free(pbUnpackedMatrix);
+            free(pbUnpackedPermutedGraphMatrix);
+            *pbErrorReason=ERROR_REASON_CHEATING;
+            return ERROR_SYSTEM;
+        }
+        if((qwChallengeBit&1)==0){
+            //if given permutation matrix, we need to check permutation is correct
+            pbBuffer=permuteMatrix(pbUnpackedMatrix,pZKnState->pZKnGraph->pbGraphData,wCheckDimension);
+            if (pbBuffer==NULL){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                *pbErrorReason=ERROR_REASON_SYSTEM;
+                return ERROR_SYSTEM;
+            }
+            if (memcmp(pbBuffer,pbUnpackedPermutedGraphMatrix,pZKnState->pZKnGraph->dwMatrixSize)!=0){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                free(pbBuffer);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+            free(pbBuffer);
+        }else{
+            //if it's the cycle check, we need to check it's hamiltonian
+            if (checkHamiltonianCycle(pbUnpackedPermutedGraphMatrix,pbUnpackedMatrix,wCheckDimension)==1){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+        }
+        //We passed this challenge
+        free(pbUnpackedMatrix);
+        free(pbUnpackedPermutedGraphMatrix);
+        //Next challenge bit
+        qwChallengeBit=qwChallengeBit>>1;
+        //Update data left   
+        dwCommitmentDataLeft=dwCommitmentDataLeft-(pSHA256Commitment->dwPackedPermutedMatrixSize+SHA256_COMMITMENT_HEADER_SIZE);
+        dwRevealDataLeft=dwRevealDataLeft-(pSHA256Reveal->dwPackedPermutationOrCycleSize+SHA256_REVEAL_HEADER_SIZE);
+        //Go to next entries
+        pSHA256Commitment=(PSHA256_COMMITMENT)(((uint8_t*)pSHA256Commitment)+pSHA256Commitment->dwPackedPermutedMatrixSize+SHA256_COMMITMENT_HEADER_SIZE);
+        pSHA256Reveal=(PSHA256_REVEAL)(((uint8_t*)pSHA256Reveal)+pSHA256Reveal->dwPackedPermutationOrCycleSize+SHA256_REVEAL_HEADER_SIZE);
+    }
+    //Proof worked
+    *pbErrorReason=ERROR_REASON_NONE;
+    return SUCCESS;
+}
+
+/*
+    uint8_t checkAESProof(PZKN_STATE pZKnState,uint64_t qwChallengeRandom, uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize, \
+        uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason)
+    description:
+        Check AES Proof
+    arguments:
+        pZKnState - zero knowledge state
+        qwChallengeRandom - challenge bits
+        pbCommitmentData - commitments
+        dwCommitmentDataSize - commitment data size
+        pbRevealData - commitment revealing data
+        dwRevealDataSize - reveal data size
+        pbErrorReason - pointer for outputing error reasons
+    return value:
+        SUCCESS - SUCCESS
+        FAIL - ERROR_SYSTEM or ERROR_BAD_VALUE
+
+*/
+uint8_t checkAESProof(PZKN_STATE pZKnState,uint64_t qwChallengeRandom, uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize, \
+uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
+    PAES_COMMITMENT pAESCommitment;
+    PAES_REVEAL pAESReveal;
+    uint8_t* pbDecryptedData;
+    uint32_t dwCommitmentDataLeft;
+    uint32_t dwRevealDataLeft;
+    uint8_t bIndex;
+    uint64_t qwChallengeBit;
+    uint8_t* pbBuffer;
+    uint8_t* pbUnpackedMatrix;
+    uint8_t* pbUnpackedPermutedGraphMatrix;
+    uint16_t wCheckDimension, wPermutedGraphDimension;
+    uint32_t dwDecryptedDataSize;
+    dwCommitmentDataLeft=dwCommitmentDataSize;
+    dwRevealDataLeft=dwRevealDataSize;
+    qwChallengeBit=qwChallengeRandom;
+    pAESCommitment=(PAES_COMMITMENT)pbCommitmentData;
+    pAESReveal=(PAES_REVEAL)pbRevealData;
+    for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
+        //Checking under/overflows in commitment record
+        if ((pAESCommitment->dwSingleCiphertextPlusIVSize*2+pAESCommitment->dwPackedPermutedMatrixSize +AES_COMMITMENT_HEADER_SIZE) > dwCommitmentDataLeft || \
+        pAESCommitment->dwSingleCiphertextPlusIVSize >dwCommitmentDataLeft ||
+        pAESCommitment->dwPackedPermutedMatrixSize>dwCommitmentDataLeft){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
+        //Checking under/overflows in reveal record
+        if (sizeof(AES_REVEAL)>dwRevealDataLeft){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
+        //Decrypting Commitment
+        if((qwChallengeBit&1)==0){
+            pbDecryptedData=aes128cbc_decrypt(pAESCommitment->commitmentData,pAESCommitment->dwSingleCiphertextPlusIVSize,pAESReveal->revealingKey,&dwDecryptedDataSize);
+        }else{
+            pbDecryptedData=aes128cbc_decrypt(pAESCommitment->commitmentData+pAESCommitment->dwSingleCiphertextPlusIVSize,pAESCommitment->dwSingleCiphertextPlusIVSize,pAESReveal->revealingKey,&dwDecryptedDataSize);
+        }
+        if (pbDecryptedData==NULL){
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Unpacking revealed matrix
+        pbUnpackedMatrix=unpackMatrix(dwDecryptedDataSize,pbDecryptedData,&wCheckDimension);
+        if (pbUnpackedMatrix==NULL){
+            free(pbDecryptedData);
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        free(pbDecryptedData);
+        //Unpacking permuted graph matrix
+        pbUnpackedPermutedGraphMatrix=unpackMatrix(pAESCommitment->dwPackedPermutedMatrixSize,pAESCommitment->commitmentData + pAESCommitment->dwSingleCiphertextPlusIVSize*2,&wPermutedGraphDimension);
+        if (pbUnpackedPermutedGraphMatrix==NULL){
+            free(pbUnpackedMatrix);
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Checking dimensions are the same everywhere
+        if (wCheckDimension!=pZKnState->pZKnGraph->wVerticeCount || wCheckDimension!=wPermutedGraphDimension){
+            free(pbUnpackedMatrix);
+            free(pbUnpackedPermutedGraphMatrix);
+            *pbErrorReason=ERROR_REASON_CHEATING;
+            return ERROR_SYSTEM;
+        }
+        if((qwChallengeBit&1)==0){
+            //if given permutation matrix, we need to check permutation is correct
+            pbBuffer=permuteMatrix(pbUnpackedMatrix,pZKnState->pZKnGraph->pbGraphData,wCheckDimension);
+            if (pbBuffer==NULL){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                *pbErrorReason=ERROR_REASON_SYSTEM;
+                return ERROR_SYSTEM;
+            }
+            if (memcmp(pbBuffer,pbUnpackedPermutedGraphMatrix,pZKnState->pZKnGraph->dwMatrixSize)!=0){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                free(pbBuffer);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+            free(pbBuffer);
+        }else{
+            //if it's the cycle check, we need to check it's hamiltonian
+            if (checkHamiltonianCycle(pbUnpackedPermutedGraphMatrix,pbUnpackedMatrix,wCheckDimension)==1){
+                free(pbUnpackedMatrix);
+                free(pbUnpackedPermutedGraphMatrix);
+                *pbErrorReason=ERROR_REASON_CHEATING;
+                return ERROR_BAD_VALUE;
+            }
+        }
+        //We passed this challenge
+        free(pbUnpackedMatrix);
+        free(pbUnpackedPermutedGraphMatrix);
+        //Next challenge bit
+        qwChallengeBit=qwChallengeBit>>1;
+        //Update data left   
+        dwCommitmentDataLeft=dwCommitmentDataLeft-AES_COMMITMENT_HEADER_SIZE-((pAESCommitment->dwSingleCiphertextPlusIVSize)*2)- pAESCommitment->dwPackedPermutedMatrixSize;
+        dwRevealDataLeft=dwRevealDataLeft-sizeof(AES_REVEAL);
+        //Go to next entries
+        pAESCommitment=(PAES_COMMITMENT)(((uint8_t*)pAESCommitment)+pAESCommitment->dwPackedPermutedMatrixSize+AES_COMMITMENT_HEADER_SIZE +(pAESCommitment->dwSingleCiphertextPlusIVSize*2));
+        pAESReveal=(PAES_REVEAL)(((uint8_t*)pAESReveal)+sizeof(AES_REVEAL));
+    }
+    //Proof worked
+    *pbErrorReason=ERROR_REASON_NONE;
+    return SUCCESS;
+}
+
+/*
+    uint8_t checkProof(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, PREVEAL_PACKET pRevealPacket, \
+    uint32_t dwRevealPacketSize, uint8_t** ppbFlag, uint8_t* pbErrorReason)
+    description:
+        Check given proof, reset protocol if something goes wrong
+    arguments:
+        pZKnState - zero knowledge state (main graph, etc..)
+        pZknProtocolState - protocol state
+        pRevealPacket - revealing packet
+        dwRevealPacketSize - reveal packet size
+        ppbFlag - poiter for outputing flag
+        pbErrorReason - pointer for outputing error reason
+    return value:
+        SUCCESS - SUCCESS
+        FAIL - ERROR_SYSTEM or ERROR_BAD_VALUE (depending on error reason this means attempts to subvert logic or pwn)
+*/
+uint8_t checkProof(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, PREVEAL_PACKET pRevealPacket, \
+uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason){
+    PCOMMITMENT_PACKET pCommitmentPacket;
+    uint8_t bResult;
+    //Checking sanity
+    if (pZKnState==NULL || pZKnProtocolState==NULL || pRevealPacket==NULL || ppbFlag==NULL) 
+    {
+        *pbErrorReason=ERROR_REASON_SYSTEM;
+        bResult= ERROR_SYSTEM;
+        goto protocol_reset;
+    }
+    //Checking that the protocol is at the right stage
+    if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete==0 || pZKnProtocolState->protocolProgress.isRandomnessStageComplete==0){
+        *pbErrorReason=ERROR_REASON_TOO_EARLY;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    pCommitmentPacket=(PCOMMITMENT_PACKET)pZKnProtocolState->pbCommitmentData;
+    //Checking commitment data is not under/overflowing
+    if (pCommitmentPacket->dwDataSize!=(pZKnProtocolState->dwCommitmentDataSize-COMMITMENT_PACKET_HEADER_SIZE)){
+        *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    //Checking reveal data is not under/overflowing
+    if (pRevealPacket->dwDataSize!=(dwRevealPacketSize-REVEAL_PACKET_HEADER_SIZE)){
+        *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    //Check that prover honored verifier's settings
+    if (pCommitmentPacket->bCommitmentCount!=pZKnState->bCheckCount || pRevealPacket->bCommitmentCount!=pZKnState->bCheckCount){
+        *pbErrorReason=ERROR_REASON_CHEATING;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    if ((pCommitmentPacket->commitmentType.supportedAlgsCode & pZKnState->supportedAlgorithms.supportedAlgsCode & pRevealPacket->commitmentType.supportedAlgsCode)==0){
+        *pbErrorReason=ERROR_REASON_CHEATING;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    //Check only a single one was used
+    if ((pCommitmentPacket->commitmentType.isCRC32Supported & pCommitmentPacket->commitmentType.isSHA256Supported) || \
+    (pCommitmentPacket->commitmentType.isCRC32Supported & pCommitmentPacket->commitmentType.isAESSupported) || \
+    (pCommitmentPacket->commitmentType.isSHA256Supported & pCommitmentPacket->commitmentType.isAESSupported)){
+        *pbErrorReason=ERROR_REASON_CHEATING;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    if ((pRevealPacket->commitmentType.isCRC32Supported & pRevealPacket->commitmentType.isSHA256Supported) || \
+    (pRevealPacket->commitmentType.isCRC32Supported & pRevealPacket->commitmentType.isAESSupported) || \
+    (pRevealPacket->commitmentType.isSHA256Supported & pRevealPacket->commitmentType.isAESSupported)){
+        *pbErrorReason=ERROR_REASON_CHEATING;
+        bResult= ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
+    if (pRevealPacket->commitmentType.isCRC32Supported){
+        bResult= checkCRC32Proof(pZKnState,pZKnProtocolState->qwRandom,pCommitmentPacket->commitmentData,pCommitmentPacket->dwDataSize,\
+        pRevealPacket->revealData,pRevealPacket->dwDataSize,pbErrorReason);
+    }else{
+        if (pRevealPacket->commitmentType.isSHA256Supported){
+            bResult= checkSHA256Proof(pZKnState,pZKnProtocolState->qwRandom,pCommitmentPacket->commitmentData,pCommitmentPacket->dwDataSize,\
+            pRevealPacket->revealData,pRevealPacket->dwDataSize,pbErrorReason);
+        }else{
+            bResult= checkAESProof(pZKnState,pZKnProtocolState->qwRandom,pCommitmentPacket->commitmentData,pCommitmentPacket->dwDataSize,\
+            pRevealPacket->revealData,pRevealPacket->dwDataSize,pbErrorReason);
+           
+        }
+    }
+    if (bResult==SUCCESS){
+        *ppbFlag=pZKnState->pbFLAG;
+    }
+    else{
+        *ppbFlag=NULL;
+    }
+protocol_reset:
+    //Reset protocol in any case
+    pZKnProtocolState->protocolProgress.status=0;
+    pZKnProtocolState->dwCommitmentDataSize=0;
+    free(pZKnProtocolState->pbCommitmentData);
+    return bResult;
+
+}
 /*
     PZKN_PROTOCOL_STATE initializeZKnProtocolState()
     description:

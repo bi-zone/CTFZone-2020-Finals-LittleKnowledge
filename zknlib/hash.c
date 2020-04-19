@@ -341,6 +341,10 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     close(opfd);
     close(tfmfd);
     dwPlaintextSize=*(uint32_t*)pbPtBuf;
+    if (dwPlaintextSize>dSize) {
+        free(pbPtBuf);
+        return NULL;
+    }
     pbFinalPtBuf=malloc(dwPlaintextSize);
     if (pbFinalPtBuf==NULL){
         free(pbPtBuf);

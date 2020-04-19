@@ -10,6 +10,8 @@
 #define RANDOM_R_SIZE 16
 #define FLAG_ARRAY_SIZE 64
 
+#define MINIMUM_CHECK_COUNT 4
+#define MAXIMUM_CHECK_COUNT 64
 
 typedef struct __GRAPH{
   uint32_t dwMatrixSize;
@@ -48,7 +50,7 @@ typedef union{
 
 typedef struct __ZKN_PROTOCOL_STATE{
   PLEGENDRE_PRNG pLegendrePRNG;
-  uint64_t dwRandom;
+  uint64_t qwRandom;
   uint8_t* pbCommitmentData;
   uint32_t dwCommitmentDataSize;
   PROTOCOL_PROGRESS protocolProgress;
@@ -94,14 +96,14 @@ typedef struct __SHA256_COMMITMENT{
   uint8_t permutationSHA256[SHA256_SIZE];
   uint8_t permutedCycleSHA256[SHA256_SIZE];
   uint32_t dwPackedPermutedMatrixSize;
-  uint8_t packedPermutedMatrix[1];
+  uint8_t packedPermutedGraphMatrix[1];
 }SHA256_COMMITMENT, *PSHA256_COMMITMENT;
 
-#define SHA256_COMMITMENT_HEADER_SIZE offsetof(SHA256_COMMITMENT,packedPermutedMatrix)
+#define SHA256_COMMITMENT_HEADER_SIZE offsetof(SHA256_COMMITMENT,packedPermutedGraphMatrix)
 
 typedef struct __AES_COMMITMENT{
   uint32_t dwSingleCiphertextPlusIVSize;
-  uint32_t dwPackedPermutationMatrixSize;
+  uint32_t dwPackedPermutedMatrixSize;
   uint8_t commitmentData[1];//permutation commitment | cycle commitment | permuted matrix
 }AES_COMMITMENT, *PAES_COMMITMENT;
 
@@ -122,35 +124,36 @@ typedef struct __COMMTIMENT_EXTRA_INFORMATION{
 #define COMMITMENT_EXTRA_INFORMATION_HEADER_SIZE offsetof(COMMITMENT_EXTRA_INFORMATION,data)
 
 typedef struct __CHALLENGE_PACKET{
-  uint64_t dwRandom;
+  uint64_t qwRandom;
   uint32_t bBitCount;
 }CHALLENGE_PACKET, *PCHALLENGE_PACKET;
 
-typedef struct __UNPACK_COMMITMENT_PACKET{
+typedef struct __REVEAL_PACKET{
   uint32_t dwDataSize;
   uint8_t bCommitmentCount;
   COMMITMENT_ALGORITHMS commitmentType;
-  uint8_t unpackCommitmentData[1];
-}UNPACK_COMMITMENT_PACKET, *PUNPACK_COMMITMENT_PACKET;
+  uint8_t revealData[1];
+}REVEAL_PACKET, *PREVEAL_PACKET;
 
+#define REVEAL_PACKET_HEADER_SIZE offsetof(REVEAL_PACKET,revealData)
 
-typedef struct __CRC32_UNPACK_COMMITMENT{
+typedef struct __CRC32_REVEAL{
   uint32_t dwPackedPermutationOrCycleSize;
   uint8_t packedPermutationOrCycle[1];
-}CRC32_UNPACK_COMMITMENT, *PCRC32_UNPACK_COMMITMENT;
+}CRC32_REVEAL, *PCRC32_REVEAL;
 
-#define CRC32_UNPACK_COMMITMENT_HEADER_SIZE offsetof(CRC32_UNPACK_COMMITMENT,packedPermutationOrCycle)
+#define CRC32_REVEAL_HEADER_SIZE offsetof(CRC32_REVEAL,packedPermutationOrCycle)
 
-typedef struct __SHA256_UNPACK_COMMITMENT{
+typedef struct __SHA256_REVEAL{
   uint32_t dwPackedPermutationOrCycleSize;
   uint8_t packedPermutationOrCycle[1];
-}SHA256_UNPACK_COMMITMENT, *PSHA256_UNPACK_COMMITMENT;
+}SHA256_REVEAL, *PSHA256_REVEAL;
 
-#define SHA256_UNPACK_COMMITMENT_HEADER_SIZE offsetof(SHA256_UNPACK_COMMITMENT,packedPermutationOrCycle)
+#define SHA256_REVEAL_HEADER_SIZE offsetof(SHA256_REVEAL,packedPermutationOrCycle)
 
-typedef struct __AES_UNPACK_COMMITMENT{
-  uint8_t unpackingKey[16];
-}AES_UNPACK_COMMITMENT, *PAES_UNPACK_COMMITMENT;
+typedef struct __AES_REVEAL{
+  uint8_t revealingKey[16];
+}AES_REVEAL, *PAES_REVEAL;
 
 #define AES_COMMITMENT_HEADER_SIZE offsetof(AES_COMMITMENT, commitmentData)
 
@@ -183,6 +186,7 @@ typedef struct __FULL_KNOWLEDGE_FOR_STORAGE
 
 
 DLL_PUBLIC extern PZKN_STATE initializeZKnState(uint16_t verticeNumber, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms);
+DLL_PUBLIC PZKN_PROTOCOL_STATE initializeZKnProtocolState();
 DLL_PUBLIC uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState);
 DLL_PUBLIC uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize);
 DLL_PUBLIC PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize);
@@ -190,7 +194,22 @@ DLL_PUBLIC uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint
 DLL_PUBLIC uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR);
 DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount);
 DLL_PUBLIC void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge);
+DLL_PUBLIC PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState, out uint32_t* pdwPacketSize);
+DLL_PUBLIC PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFIGURATION_PACKET pProofConfigurationPacket, uint32_t dwPacketSize, out uint8_t* pbErrorReason);
+DLL_PUBLIC void freeProofHelper(PPROOF_HELPER pProofHelper);
+DLL_PUBLIC PSINGLE_PROOF* createProofsForOneRound(PPROOF_HELPER pProofHelper);
+DLL_PUBLIC void freeProofsForOneRound(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper);
+DLL_PUBLIC PCOMMITMENT_PACKET createCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper,out uint32_t* pdwCommitmentPacketSize, \
+out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation);
+DLL_PUBLIC uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolState,uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize);
+DLL_PUBLIC PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, out uint32_t* pdwPacketSize);
+DLL_PUBLIC PREVEAL_PACKET createRevealPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper, PCHALLENGE_PACKET pChallengePacket, \
+PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwRevealPacketSize);
+DLL_PUBLIC uint8_t checkProof(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, PREVEAL_PACKET pRevealPacket, \
+uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason);
+ 
 
+DLL_PUBLIC void destroyZKnProtocolState(PZKN_PROTOCOL_STATE pZKnProtocolState);
 DLL_PUBLIC extern void destroyZKnState(PZKN_STATE);
 
 #endif //
