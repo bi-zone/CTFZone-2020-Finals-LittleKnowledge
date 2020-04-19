@@ -11,7 +11,8 @@ zknlib=0
 flag_storage={}
 def initializeZKNState():
     global zknlib
-    return zknlib.initializeZKNThread()
+    defaultVerticeCount=16
+    return zknlib.initializeZKNThread(c_uint16(defaultVerticeCount))
 def destroyZKNState(state):
     global zknlib
     zknlib.destroyZKNThread(state)
