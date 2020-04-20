@@ -168,11 +168,12 @@ int main(){
 
     //TEST 2 COMPLETE.
 #endif
+#define TEST_CRC32_CORRECT_MAX
 #ifdef TEST_CRC32_CORRECT_MAX
     //TEST 3 MAX DIMENSION / CORRECT PROOF
     printf("#3 Testing full proof cycle with MAX dimension\n");
     //Client side
-    pZKnState=initializeZKnState(MAX_MATRIX_DIMENSION,32,0xff);
+    pZKnState=initializeZKnState(MAX_MATRIX_DIMENSION,63,0x7);
     printf ("ZKNState %p\n",pZKnState);
     printf("FLAG: %s\nGRAPH: %p\nVertice count: %d\n",pZKnState->pbFLAG,pZKnState->pZKnGraph,pZKnState->wDefaultVerticeCount);
     pInitialSettingPacket=createInitialSettingPacket(pZKnState);
@@ -210,7 +211,7 @@ int main(){
     pZKnProtocolState=initializeZKnProtocolState();
     printf("Initialized ZKnProtocolState %p\n",pZKnProtocolState);
     bResult=saveCommitment(pZKnState,pZKnProtocolState,pbCommitment,dwCommitmentSize);
-    free(pbCommitment);
+    freeDanglingPointer(pbCommitment);
     printf("Saved commitment, result: %hhd\n",bResult);
     pbChallenge=(uint8_t*)createChallenge(pZKnState,pZKnProtocolState,&dwChallengeSize);
     printf("Created challenge: %p\n",pbChallenge);

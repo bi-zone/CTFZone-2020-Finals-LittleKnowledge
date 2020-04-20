@@ -42,17 +42,38 @@ unsigned char * sha256(unsigned char* pData,size_t dSize){
     sock_fd=socket(AF_ALG,SOCK_SEQPACKET,0);
     if (sock_fd==-1) return NULL;
     bfd=bind(sock_fd,(struct sockaddr*)&sa,sizeof(sa));
-    if (bfd==-1) return NULL;
+    if (bfd==-1) {
+        close(sock_fd);
+        return NULL;
+    }
     opfd=accept(sock_fd,NULL,0);
-    if (opfd==-1) return NULL;
+    if (opfd==-1) {
+        close(sock_fd);
+        return NULL;
+    }
 
     ret=send(opfd,pData,dSize,0);
-    if (ret!=dSize) return NULL;
+    if (ret!=dSize) 
+    {
+        close(opfd);
+        close(sock_fd);
+        return NULL;
+    }
     ret=recv(opfd,hash,SHA256_SIZE,0);
-    if (ret!=SHA256_SIZE) return NULL;
+    if (ret!=SHA256_SIZE) {
+        close(sock_fd);
+        close(opfd);
+        return NULL;
+    }
     pHash=malloc(SHA256_SIZE);
-    if (pHash==NULL) return NULL;
+    if (pHash==NULL) {
+        close(sock_fd);
+        close(opfd);
+        return NULL;
+    }
     memcpy(pHash,hash,SHA256_SIZE);
+    close(sock_fd);
+    close(opfd);
     return pHash;
 }
 
@@ -83,20 +104,43 @@ unsigned char * crc32(unsigned char* pData,size_t dSize){
     sock_fd=socket(AF_ALG,SOCK_SEQPACKET,0);
     if (sock_fd==-1) return NULL;
     bfd=bind(sock_fd,(struct sockaddr*)&sa,sizeof(sa));
-    if (bfd==-1) return NULL;
+    if (bfd==-1)
+    {
+        close(sock_fd);
+        return NULL;
+    }
     if(setsockopt(sock_fd,SOL_ALG,ALG_SET_KEY,hash,CRC32_SIZE)==-1){
+        close(sock_fd);
         return NULL;
     }
     opfd=accept(sock_fd,NULL,0);
-    if (opfd==-1) return NULL;
+    if (opfd==-1) 
+    {
+        close(sock_fd);
+        return NULL;
+    }
     
     ret=send(opfd,pData,dSize,MSG_DONTWAIT);
-    if (ret!=dSize) return NULL;
+    if (ret!=dSize) {
+        close(opfd);
+        close(sock_fd);
+        return NULL;
+    }
     ret=recv(opfd,hash,CRC32_SIZE,0);
-    if (ret!=CRC32_SIZE) return NULL;
+    if (ret!=CRC32_SIZE) {
+        close(opfd);
+        close(sock_fd);
+        return NULL;
+    }
     pHash=malloc(CRC32_SIZE);
-    if (pHash==NULL) return NULL;
+    if (pHash==NULL) {
+        close(opfd);
+        close(sock_fd);
+        return NULL;
+    }
     *(uint32_t*)pHash=0xffffffff&(~(*(uint32_t*)hash));
+    close(opfd);
+    close(sock_fd);
     return pHash;
 }
 /*

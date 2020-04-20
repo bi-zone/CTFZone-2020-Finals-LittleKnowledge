@@ -76,7 +76,6 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
     PINITIAL_SETTING_PACKET pInitialSettingPacket;
     int fd;
     ssize_t bytesRead, totalBytesRead;
-    
     if (pZKnState==NULL) return NULL;
     pInitialSettingPacket=(PINITIAL_SETTING_PACKET)malloc(sizeof(INITIAL_SETTING_PACKET));
     if (pInitialSettingPacket==NULL) return NULL;
@@ -359,7 +358,7 @@ PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* p
     uint8_t* pbPackedMatrix;
     uint32_t dwPackedMatrixSize;
     dwPackedMatrixSize=0;
-    
+    if (pFullKnowledge==NULL || pbRANDOM_R==NULL || psbFLAG==NULL || pdwGraphSetPacketSize==NULL) return NULL; 
     pbPackedMatrix=packMatrix(pFullKnowledge->pbGraphMatrix,pFullKnowledge->wDimension,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL) return NULL;
     dwGraphSetPacketSize=GRAPH_SET_PACKET_HEADER_SIZE + dwPackedMatrixSize;
@@ -1875,6 +1874,7 @@ protocol_reset:
     pZKnProtocolState->protocolProgress.status=0;
     pZKnProtocolState->dwCommitmentDataSize=0;
     free(pZKnProtocolState->pbCommitmentData);
+    pZKnProtocolState->pbCommitmentData=NULL;
     return bResult;
 
 }
@@ -1890,7 +1890,7 @@ protocol_reset:
 */
 PZKN_PROTOCOL_STATE initializeZKnProtocolState(){
     PZKN_PROTOCOL_STATE pZKnProtocolState;
-    pZKnProtocolState=(PZKN_PROTOCOL_STATE) malloc(sizeof(ZKN_PROTOCOL_STATE));
+    pZKnProtocolState=(PZKN_PROTOCOL_STATE) calloc(1,sizeof(ZKN_PROTOCOL_STATE));
     if (pZKnProtocolState==NULL) return NULL;
     pZKnProtocolState->pLegendrePRNG=initializePRNG(P);
     if (pZKnProtocolState->pLegendrePRNG==NULL){
@@ -1912,6 +1912,7 @@ PZKN_PROTOCOL_STATE initializeZKnProtocolState(){
 */
 void destroyZKnProtocolState(PZKN_PROTOCOL_STATE pZKnProtocolState){
     free(pZKnProtocolState->pLegendrePRNG);
+    free(pZKnProtocolState->pbCommitmentData);
     free(pZKnProtocolState);
 }
 
