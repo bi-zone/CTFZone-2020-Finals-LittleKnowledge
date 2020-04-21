@@ -44,7 +44,7 @@ class ZKnLibNotALib(Exception):pass
 class ZKnStateNotCreated(Exception):pass
 class PrivateKeyCantBeParsed(Exception):pass
 class Prover:
-    def __init__(self, flag,raw_key):
+    def __init__(self, flag,raw_key,full_knowledge=None):
         if isinstance(flag,str):
             flag=flag.encode()
         if len(flag)<FLAG_ARRAY_SIZE:
@@ -61,7 +61,7 @@ class Prover:
             self.zknlib=cdll.LoadLibrary(ZKNLIBRARY_NAME)
         except OSError:
             raise ZKnLibNotALib
-        self.full_knowledge=None
+        self.full_knowledge=full_knowledge
         self.proof_helper=None
         self.proofs_for_one_round=None
         self.extra_information=None
@@ -76,7 +76,27 @@ class Prover:
             return False
         else:
             return True
-        
+    def packFullKnowledge(self):
+        outputSize=c_uint32(0)
+        self.zknlib.packFullKnowledgeForStorage.restype=c_void_p
+        result=self.zknlib.packFullKnowledgeForStorage(self.full_knowledge,pointer(outputSize))
+        if result==None:
+            return None
+        return bytes(cast(result,POINTER(c_uint8*outputSize.value)).contents)
+    @staticmethod
+    def restoreFromStorage(flag,key,storedFullKnowledge):
+        if not os.path.isfile(ZKNLIBRARY_NAME):
+            raise ZKnLibNotFound
+        try:
+            zknlib=cdll.LoadLibrary(ZKNLIBRARY_NAME)
+        except OSError:
+            raise ZKnLibNotALib
+        storedFKnBytes=create_string_buffer(storedFullKnowledge,len(storedFullKnowledge))
+        zknlib.unpackFullKnowledgeFromStorage.restype=c_void_p
+        result=zknlib.unpackFullKnowledgeFromStorage(storedFKnBytes,c_uint32(len(storedFullKnowledge)))
+        if result==None:
+            return None
+        return Prover(flag,key,cast(result,POINTER(c_uint8)))
     def createGraphSetPacketAndHash(self, initialSettingsPacket):
         self.zknlib.createGraphSetPacket.restype=c_void_p
         insetBytesp=create_string_buffer(initialSettingsPacket,len(initialSettingsPacket))
