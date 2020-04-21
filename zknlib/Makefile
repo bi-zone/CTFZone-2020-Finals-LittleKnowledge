@@ -59,6 +59,5 @@ test_debug: test_zkn
 all: libzkn test
 default: all
 clean:
-	rm -f $(ODIR)/*.o $(ODIR)/libzkn.so $(ODIR)/test_zkn
-	rmdir $(ODIR)
-
+	#rm -f $(ODIR)/*.o $(ODIR)/libzkn.so $(ODIR)/test_zkn
+	rm -rf $(ODIR)

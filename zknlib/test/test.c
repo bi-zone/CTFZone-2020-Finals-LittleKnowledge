@@ -308,12 +308,11 @@ int main(){
     //Server side
     freeFullKnowledgeForServer(pFullKnowledge);
 #endif
-
 #ifdef TEST_AES_MAX_DIM_CORRECT
     //TEST 5 MAX DIMENSION / CORRECT PROOF / AES
     printf("#5 Testing full proof cycle with MAX dimension and AES COMMITMENT\n");
     //Client side
-    pZKnState=initializeZKnState(MAX_MATRIX_DIMENSION,32,4);
+    pZKnState=initializeZKnState(MAX_MATRIX_DIMENSION,64,4);
     printf ("ZKNState %p\n",pZKnState);
     printf("FLAG: %s\nGRAPH: %p\nVertice count: %d\n",pZKnState->pbFLAG,pZKnState->pZKnGraph,pZKnState->wDefaultVerticeCount);
     pInitialSettingPacket=createInitialSettingPacket(pZKnState);

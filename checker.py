@@ -5,6 +5,33 @@ import socket
 import random
 import os
 import time
+private_key="""-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1K2+AWasfdhlGmhZp8mFYl8HG6tZMdgE//n2+LVpwt1LWxgN
+izUGXt36slPwvi95s0XF+dSLwTE9cYhuj0lcN2bASmvsVkoQjx+Crxhan38gwy7i
+9jwMm9FhgQ2BGIG9PVNeeNMlHs4pHQ1uOMUN2DroJWszL5LMz+eV/YWwVHns2w9s
+FMJd3gDzXYs5F/Z4fHa5Qpw5LSor2tFeKIITBHHLXjy5ZkQc5ZyBJIL+ciEHnbsO
+E4ofxy7bF7zAt85GHURi9qlmePghxph9XMwknz4j3hpEutBMzs/qhXgrPT0nO7+n
+0N7wbIZIRdtLBV9qM5R904OyJoAt+2q5hOcc7wIDAQABAoIBAHtuFi7T+tnSg+LO
+mvHg5/OOeR6a1Fo0J7qzxJzVFHtOWVSV4g5fiMH4DG4Af2CxRu0/WkXDEBTgUeuZ
+JaktB0Lz9Dd86R2vQGr/+6VI+hdE/aupg3kqopqv6umt/7VMXpq/zr1KtWlqdrvw
+tn5mBsHudhp5W6yJgypKGmeXdh2f0W2TxoIO3YvzECDPPrFL9C+9vO7pdpUIPacT
+QQRWEu0OAn+MSeTHuCO0HaFNcxOts0Su/RT0ySuukAs5omQWFvgDDg4gDj6WpniF
+oW3SEmXBEQ+xgB0bkuEu2Bvc0KpAfgdKP+c9PsclOgEq89suiQBzy1VlDK6V3cvg
+ICKXR3ECgYEA/s6CxsgKWO3dV8+nqw2s4MpfWbTkFVCRGOd5gFWboUNZPrF426Qc
+wwRM4aS3fR+9+4m6EaD6phqoxTQawlV5iZN5J1ND0LJK5H3eW6OD5456ioxO2K2I
+HxanpoYJcYeiwMKmr3CgcM+rnZ6n/0GXhtEPuX/MJr0aNATkOVQenvkCgYEA1ay5
+T0bF7W3dB5NALbbdEH4Y++wX/ONQ+j2AiEzhBkBoDFMRN/LVE4WY+mMRae6WIFrg
+M+bR2h7yTXjmgeqMm2+vgJQ7X+012dFHFc63RcGDrCkChvM+Qfk3sLaNut3Z74fU
+PE/QSnOTOf/sixQ6w/5CpYGR/LDeCrJ1fFDMTScCgYEA3skG9PCwg2KuVfmc2uVh
+E0Y+KjwL9Er2InU4+algIpa1MCiRyFDsSOK4qc2QFRmszYJ1Kra6kILcr1fIUcPU
+OSK1GlomABHzg2Y+BZepW8tqfzsAMVlAnBX9zY6CMT5rYeiPPvPVg+0/Wtf+gSMD
+bn/aJNGFWRWcFIF2Xl2bTFkCgYEAvH+GbshZnY5Y+fDOIkX6mS0Ur1FlDAQhENEm
+zZc8wD4bTBwPyZKgpHssLF8vIouGxv5EYaUTpd+9E9k/SIb5CbqqUbzy8DocUo6L
+rlJRXelMVplLEHAPkTXhCjTRrXM/ak8iTR5/+t4gmH8MVtk+yl5Ivych+ZCyIS+z
+8zp4MOsCgYA3I7PVVeh9UgDegc72G6xoZey+1s5qzp7xc3/kXXVWATKqiXDojbEl
+Ud/lESQG1LQ+2H3DCnxyGXtuy80rZ4pBxJcXsivvWR+x5kyDXownFAzZFTPboLwI
+Ok1reXjlAm5lfftvYfk3vFXHLUL2yqVoxbMHLf0G/oEmp7WhVF3TBA==
+-----END RSA PRIVATE KEY-----"""
 flag=b'FLAGGER'
 (TEAM_HOST,TEAM_PORT)=('127.0.0.1',1337)
 ERROR_CONNECTION_REFUSED=1
@@ -54,7 +81,8 @@ def malform_buffer(buffer, minimum_sequential_change=17):
 
 
 def check_team_server(HOST,PORT):
-    prover=Prover(flag,b'key')
+    global private_key
+    prover=Prover(flag,private_key)
     try:
         #Updating flag and graph
         team_socket=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
@@ -99,6 +127,7 @@ def check_team_server(HOST,PORT):
         if not proofs_result:
             return ERROR_COULDNT_CREATE_PROOFS
         commitment_packet=prover.createCommitmentPacket()
+        print ('Commitment packet length',len(commitment_packet))
         if commitment_packet==None:
             return ERROR_COULDNT_CREATE_COMMITMENT_PACKET
         sendMessage(team_socket,b'save_commitment')
@@ -139,7 +168,7 @@ def check_team_server(HOST,PORT):
         received_answer=recvMessage(team_socket)
         if received_answer!=b'EXITING_PROOF':
             return ERROR_NOT_EXITING_PROOF
-        """
+        #"""
         ##ERROR CHECKS
         sendMessage(team_socket,b'start_zkn_protocol')
         if recvMessage(team_socket)!=b'STARTING_PROTOCOL':
@@ -200,7 +229,7 @@ def check_team_server(HOST,PORT):
 
         if recvMessage(team_socket)!=b'GOODBYE':
             return ERROR_NOT_EXITING
-        """
+        #"""
         
 
     except ConnectionResetError:

@@ -248,7 +248,7 @@ void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge){
         SUCCESS - pointer to array containing packed FULL_KNOWLEDGE and its size in pdwDataSize
         FAIL - NULL
 */
-uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out int32_t* pdwDataSize){
+uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out uint32_t* pdwDataSize){
     uint32_t dwComputedDataSize;
     uint8_t *pbPackedMatr,*pbPackedCycle;
     PFULL_KNOWLEDGE_FOR_STORAGE pPackedFullKnowledge;
@@ -303,7 +303,7 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
     pFknForStorage=(PFULL_KNOWLEDGE_FOR_STORAGE)pbPackedFullKnowledge;
     pFullKnowledge=(PFULL_KNOWLEDGE)malloc(sizeof(FULL_KNOWLEDGE));
     if (pFullKnowledge==NULL) return NULL;
-    pbUnpackedMatr=unpackMatrix((uint16_t)pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData,&wDimension);
+    pbUnpackedMatr=unpackMatrix(pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData,&wDimension);
     if (pbUnpackedMatr==NULL){
         free(pFullKnowledge);
         return NULL;
@@ -1917,46 +1917,36 @@ void destroyZKnProtocolState(PZKN_PROTOCOL_STATE pZKnProtocolState){
 }
 
 /*
-    uint8_t* packMatrixForTransmission(PMATRIX_HOLDER pMatrixHolder, out uint32_t* pdwDataSize)
+    uint8_t* packMatrixForEmbedding(uint8_t* pbMatrix, uint16_t wDimension, out uint32_t* pdwDataSize)
     description:
         Pack matrix for transmission
     arguments:
-        pMatrixHolder - structure holding matrix information
+        pbMatrix - matrix
+        wDimension - matrix dimension (number of elements in a row) 
         pdwDataSize - size of output byte array if successful
     return value:
         SUCCESS - pointer to byte array containing packed matrix
         FAIL - NULL
 */
-uint8_t* packMatrixForTransmission(PMATRIX_HOLDER pMatrixHolder, out uint32_t* pdwDataSize){
-    PPACKED_MATRIX pPackedMatrix;
+uint8_t* packMatrixForEmbedding(uint8_t* pbMatrix, uint16_t wDimension, out uint32_t* pdwDataSize){
     uint8_t * pbPacked;
-    uint32_t dwResultingSize;
-    uint32_t dwResSize;
-    if (pMatrixHolder==NULL || pMatrixHolder->pbData) return NULL;
-    pbPacked=packMatrix(pMatrixHolder->pbData,pMatrixHolder->wDimension,&dwResSize);
-    if (pbPacked==NULL) return NULL;
-    dwResultingSize=(uint32_t)dwResSize+PACKED_MATRIX_HEADER_SIZE;
-    pPackedMatrix=(PPACKED_MATRIX)malloc(dwResultingSize);
-    if (pPackedMatrix==NULL){
-        free(pbPacked);
-        return NULL;
-    }
-    pPackedMatrix->wDimension=pMatrixHolder->wDimension;
-    memcpy(pPackedMatrix->bData,pbPacked,(uint32_t)dwResSize);
-    free(pbPacked);
-    *pdwDataSize=dwResultingSize;
-    return (uint8_t*)pPackedMatrix;
+    if (pbMatrix== NULL || pdwDataSize==NULL) return NULL;
+    pbPacked=packMatrix(pbMatrix,wDimension,pdwDataSize);
+    return pbPacked;
 }
 
 /*
-    void freePackedMatrixForTransmission(uint8_t* pbPackedMatrix);
+    uint8_t* unpackPackedMatrix(uint8_t* pbPackedMatrix, uint32_t dwSize, out uint16_t pwOutputDimension)
     description:
-        free packed matrix array
+        Unpack packed matrix
     arguments:
-        pbPackedMatrix - pointer to packed matrix array
-    return value:
-        N/A
+        pbPackedMatrix - packed matrix
+        dwSize - its size
+        pwOutputDimension - for outputing resulting dimension 
 */
-void freePackedMatrixForTransmission(uint8_t* pbPackedMatrix){
-    free(pbPackedMatrix);
+uint8_t* unpackPackedMatrix(uint8_t* pbPackedMatrix, uint32_t dwSize, out uint16_t* pwOutputDimension){
+    uint8_t* pbUnpacked;
+    if (pbPackedMatrix==NULL|| pwOutputDimension==NULL) return NULL;
+    pbUnpacked=unpackMatrix(dwSize,pbPackedMatrix,pwOutputDimension);
+    return pbUnpacked;
 }

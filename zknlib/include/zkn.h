@@ -195,6 +195,8 @@ DLL_PUBLIC uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint
 DLL_PUBLIC uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR);
 DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount);
 DLL_PUBLIC void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge);
+DLL_PUBLIC uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out uint32_t* pdwDataSize);
+DLL_PUBLIC PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, uint32_t dwPackedFullKnowledgeSize);
 DLL_PUBLIC PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState, out uint32_t* pdwPacketSize);
 DLL_PUBLIC PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFIGURATION_PACKET pProofConfigurationPacket, uint32_t dwPacketSize, out uint8_t* pbErrorReason);
 DLL_PUBLIC void freeProofHelper(PPROOF_HELPER pProofHelper);
@@ -209,7 +211,8 @@ PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation, out uint32_t* pdwReve
 DLL_PUBLIC void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper,PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation);
 DLL_PUBLIC uint8_t checkProof(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, PREVEAL_PACKET pRevealPacket, \
 uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason);
- 
+DLL_PUBLIC uint8_t* packMatrixForEmbedding(uint8_t* pbMatrix, uint16_t wDimension, out uint32_t* pdwDataSize);
+DLL_PUBLIC uint8_t* unpackPackedMatrix(uint8_t* pbPackedMatrix, uint32_t dwSize, out uint16_t* pwOutputDimension);
 
 DLL_PUBLIC void destroyZKnProtocolState(PZKN_PROTOCOL_STATE pZKnProtocolState);
 DLL_PUBLIC extern void destroyZKnState(PZKN_STATE);

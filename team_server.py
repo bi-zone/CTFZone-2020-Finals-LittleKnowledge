@@ -6,8 +6,8 @@ import sys
 import os
 from ctypes import *
 from support import * 
-(HOST,PORT)=('127.0.0.1',1337)
-verifier=Verifier(128,64,4)
+(HOST,PORT)=('0.0.0.0',1337)
+verifier=Verifier(4,4,7)
 
 def update_graph(clientSocket):
     global verifier
@@ -15,7 +15,7 @@ def update_graph(clientSocket):
     sendMessage(clientSocket,initial_setting_packet)
     graphPacket=recvMessage(clientSocket)
     encrypted_signature=recvMessage(clientSocket)
-    if verifier.updateZKnGraph(graphPacket,encrypted_signature)==0:
+    if verifier.updateZKnGraph(graphPacket,encrypted_signature):
         sendMessage(clientSocket,"SUCCESS")
     else:
         sendMessage(clientSocket,"ERROR")
@@ -28,6 +28,7 @@ def start_zkn(clientSocket):
         command=recvMessage(clientSocket)
         if command==b"get_configuration":
             configuration_packet=protocol_verifier.createProofConfigurationPacket()
+            
             if configuration_packet==None:
                 sendMessage(clientSocket,"ERROR")
                 continue
@@ -35,6 +36,7 @@ def start_zkn(clientSocket):
         elif command==b"save_commitment":
             commitment_packet=recvMessage(clientSocket)
             status=protocol_verifier.saveCommitment(commitment_packet)
+            
             if status==0:
                 sendMessage(clientSocket,"SUCCESS")
             else:
@@ -66,6 +68,7 @@ def start_zkn(clientSocket):
         elif command==b"exit_protocol":
             sendMessage(clientSocket,"EXITING_PROOF")
             del protocol_verifier
+            logging.info('Graceful disconnect')
             return
         else:
             sendMessage(clientSocket,"BAD_COMMAND")
@@ -132,8 +135,10 @@ def startServer():
                             args=(clientSocket,)).start()
         except KeyboardInterrupt:
             print ('Exiting...')
+            logging.info('Exiting due to keyboard interrupt')
             return
         except Exception as e:
+            logging.info(f'Caught exception: {repr(e)}')
             print (f'Caught exception: {repr(e)}',file=sys.stderr)
 if __name__=="__main__":
     startServer()
