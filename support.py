@@ -5,6 +5,7 @@ import os
 from Crypto.PublicKey import RSA
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 ZKNLIBRARY_NAME='./libzkn.so'
+FLAG_ARRAY_SIZE=2048
 class TooMuchData(Exception):
     pass
 class NotEnoughData(Exception):
@@ -44,6 +45,10 @@ class ZKnStateNotCreated(Exception):pass
 class PrivateKeyCantBeParsed(Exception):pass
 class Prover:
     def __init__(self, flag,raw_key):
+        if isinstance(flag,str):
+            flag=flag.encode()
+        if len(flag)<FLAG_ARRAY_SIZE:
+            flag=flag+b'\x00'*(FLAG_ARRAY_SIZE-len(flag))
         self.flag=flag
         if not os.path.isfile(ZKNLIBRARY_NAME):
             raise ZKnLibNotFound
@@ -75,7 +80,7 @@ class Prover:
     def createGraphSetPacketAndHash(self, initialSettingsPacket):
         self.zknlib.createGraphSetPacket.restype=c_void_p
         insetBytesp=create_string_buffer(initialSettingsPacket,len(initialSettingsPacket))
-        flagBytesP=create_string_buffer(self.flag,64)
+        flagBytesP=create_string_buffer(self.flag,FLAG_ARRAY_SIZE)
         outputPacketSize=c_uint32(0)
         graphSetPacket=self.zknlib.createGraphSetPacket(self.full_knowledge,insetBytesp,flagBytesP,pointer(outputPacketSize))
         if graphSetPacket==None:
@@ -235,7 +240,7 @@ class ZKNProtocolVerifier:
     
     def checkProof(self,revealPacket):
         pRevealPacket=create_string_buffer(revealPacket,len(revealPacket))
-        pbFlag=cast(pointer(c_uint8(0)),POINTER(c_uint8*64))
+        pbFlag=cast(pointer(c_uint8(0)),POINTER(c_uint8*FLAG_ARRAY_SIZE))
         errorReason=c_uint8(0)
         self.zknlib.checkProof.restype=c_uint8
         result=self.zknlib.checkProof(self.verifier.ZKnState,self.ZKnProtocolState,pRevealPacket,len(revealPacket),pointer(pbFlag),pointer(errorReason))

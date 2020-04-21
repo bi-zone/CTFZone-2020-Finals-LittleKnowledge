@@ -8,7 +8,7 @@
 #include "../matrices/include/matr.h"
 #define P 863615239139 // Prime for Legendre PRF
 #define RANDOM_R_SIZE 16
-#define FLAG_ARRAY_SIZE 64
+#define FLAG_ARRAY_SIZE 2048
 
 #define MINIMUM_CHECK_COUNT 4
 #define MAXIMUM_CHECK_COUNT 64

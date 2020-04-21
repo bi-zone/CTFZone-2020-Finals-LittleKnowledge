@@ -6,31 +6,31 @@ import random
 import os
 import time
 private_key="""-----BEGIN RSA PRIVATE KEY-----
-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
+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
 -----END RSA PRIVATE KEY-----"""
 flag=b'FLAGGER'
 (TEAM_HOST,TEAM_PORT)=('127.0.0.1',1337)
@@ -118,6 +118,7 @@ def check_team_server(HOST,PORT):
             return ERROR_COULDNT_START_PROTOCOL
         sendMessage(team_socket,b'get_configuration')
         proof_configuration=recvMessage(team_socket)
+        print (proof_configuration)
         if (proof_configuration==b'ERROR'):
             return ERROR_RECEIVING_PROOF_CONFIGURATION
         proof_helper_result=prover.initializeProofHelper(proof_configuration)
@@ -136,7 +137,9 @@ def check_team_server(HOST,PORT):
             return ERROR_COULDNT_SAVE_COMMITMENT
         
         sendMessage(team_socket,b'create_challenge')
+        
         challenge=recvMessage(team_socket)
+        print (challenge)
         if challenge==b'ERROR':
             return ERROR_COULDNT_CREATE_CHALLENGE
         revealPacket=prover.createRevealPacket(challenge)
@@ -162,6 +165,7 @@ def check_team_server(HOST,PORT):
             else:
                 return ERROR_UNDEFINED_ON_CORRECT_PROOF
         received_flag=recvMessage(team_socket)
+        print(len(received_flag))
         if received_flag[:len(flag)]!=flag:
             return ERROR_WRONG_FLAG
         sendMessage(team_socket,b"exit_protocol")
