@@ -85,21 +85,17 @@ typedef struct __COMMITMENT_PACKET{
 
 typedef struct __CRC32_COMMITMENT{
   uint8_t permutationCRC32[CRC32_SIZE];
+  uint8_t permutedGraphCRC32[CRC32_SIZE];
   uint8_t permutedCycleCRC32[CRC32_SIZE];
-  uint32_t dwPackedPermutedMatrixSize;
-  uint8_t packedPermutedGraphMatrix[1];
 }CRC32_COMMITMENT, *PCRC32_COMMITMENT;
 
-#define CRC32_COMMITMENT_HEADER_SIZE offsetof(CRC32_COMMITMENT,packedPermutedGraphMatrix)
 
 typedef struct __SHA256_COMMITMENT{
   uint8_t permutationSHA256[SHA256_SIZE];
+  uint8_t permutedGraphSHA256[SHA256_SIZE];
   uint8_t permutedCycleSHA256[SHA256_SIZE];
-  uint32_t dwPackedPermutedMatrixSize;
-  uint8_t packedPermutedGraphMatrix[1];
 }SHA256_COMMITMENT, *PSHA256_COMMITMENT;
 
-#define SHA256_COMMITMENT_HEADER_SIZE offsetof(SHA256_COMMITMENT,packedPermutedGraphMatrix)
 
 typedef struct __AES_COMMITMENT{
   uint32_t dwSingleCiphertextPlusIVSize;
@@ -138,18 +134,18 @@ typedef struct __REVEAL_PACKET{
 #define REVEAL_PACKET_HEADER_SIZE offsetof(REVEAL_PACKET,revealData)
 
 typedef struct __CRC32_REVEAL{
-  uint32_t dwPackedPermutationOrCycleSize;
-  uint8_t packedPermutationOrCycle[1];
+  uint32_t dwPackedMatrixSize;
+  uint8_t packedPermutedGraphAndPermutationOrCycle[1]; //permuted graph matrix | permutation or permuted cycle matrix
 }CRC32_REVEAL, *PCRC32_REVEAL;
 
-#define CRC32_REVEAL_HEADER_SIZE offsetof(CRC32_REVEAL,packedPermutationOrCycle)
+#define CRC32_REVEAL_HEADER_SIZE offsetof(CRC32_REVEAL,packedPermutedGraphAndPermutationOrCycle)
 
 typedef struct __SHA256_REVEAL{
-  uint32_t dwPackedPermutationOrCycleSize;
-  uint8_t packedPermutationOrCycle[1];
+  uint32_t dwPackedMatrixSize;
+  uint8_t packedPermutedGraphAndPermutationOrCycle[1]; //permuted graph matrix | permutation or permuted cycle matrix
 }SHA256_REVEAL, *PSHA256_REVEAL;
 
-#define SHA256_REVEAL_HEADER_SIZE offsetof(SHA256_REVEAL,packedPermutationOrCycle)
+#define SHA256_REVEAL_HEADER_SIZE offsetof(SHA256_REVEAL,packedPermutedGraphAndPermutationOrCycle)
 
 typedef struct __AES_REVEAL{
   uint8_t revealingKey[16];

@@ -130,7 +130,7 @@ uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize){
     if ((pDecryptedSignature[0]!=0)||(pDecryptedSignature[1]!=1))return NULL;
     i=2;
     while ((i<dsSize) && (pDecryptedSignature[i]==0xff)) i=i+1;
-    if (i==2) return NULL;
+    if (i==2 || i>=dsSize) return NULL;
     if (pDecryptedSignature[i]!=0) return NULL;
     i=i+1;
     if ((i>=dsSize)||((dsSize-i)<SHA256_SIZE)) return NULL;
@@ -681,7 +681,7 @@ uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* 
     uint32_t dwSingleCommitmentSize;
     PCRC32_COMMITMENT pCRC32Commitment;
     uint8_t* pCRC32;
-    dwSingleCommitmentSize=CRC32_COMMITMENT_HEADER_SIZE+pSingleProof->dwPackedMatrixSize;
+    dwSingleCommitmentSize=sizeof(CRC32_COMMITMENT);
     pCRC32Commitment=(PCRC32_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pCRC32Commitment==NULL) return NULL;
     pCRC32=crc32(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
@@ -691,6 +691,13 @@ uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* 
     }
     memcpy(pCRC32Commitment->permutationCRC32,pCRC32,CRC32_SIZE);
     free(pCRC32);
+    pCRC32=crc32(pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
+    if (pCRC32==NULL){
+        free(pCRC32Commitment);
+        return NULL;
+    }
+    memcpy(pCRC32Commitment->permutedGraphCRC32,pCRC32,CRC32_SIZE);
+    free(pCRC32);
     pCRC32=crc32(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     if (pCRC32==NULL){
         free(pCRC32Commitment);
@@ -698,8 +705,6 @@ uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* 
     }
     memcpy(pCRC32Commitment->permutedCycleCRC32,pCRC32,CRC32_SIZE);
     free(pCRC32);
-    pCRC32Commitment->dwPackedPermutedMatrixSize=pSingleProof->dwPackedMatrixSize;
-    memcpy(pCRC32Commitment->packedPermutedGraphMatrix,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     *pdwSingleCommitmentSize=dwSingleCommitmentSize;
     return (uint8_t*)pCRC32Commitment;
 }
@@ -755,7 +760,7 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     uint32_t dwSingleCommitmentSize;
     PSHA256_COMMITMENT pSHA256Commitment;
     uint8_t* pSHA256;
-    dwSingleCommitmentSize=SHA256_COMMITMENT_HEADER_SIZE+pSingleProof->dwPackedMatrixSize;
+    dwSingleCommitmentSize=sizeof(SHA256_COMMITMENT);
     pSHA256Commitment=(PSHA256_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pSHA256Commitment==NULL) return NULL;
     pSHA256=sha256(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
@@ -765,6 +770,13 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     }
     memcpy(pSHA256Commitment->permutationSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
+    pSHA256=sha256(pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
+    if (pSHA256==NULL){
+        free(pSHA256Commitment);
+        return NULL;
+    }
+    memcpy(pSHA256Commitment->permutedGraphSHA256,pSHA256,SHA256_SIZE);
+    free(pSHA256);
     pSHA256=sha256(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     if (pSHA256==NULL){
         free(pSHA256Commitment);
@@ -772,8 +784,6 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     }
     memcpy(pSHA256Commitment->permutedCycleSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
-    pSHA256Commitment->dwPackedPermutedMatrixSize=pSingleProof->dwPackedMatrixSize;
-    memcpy(pSHA256Commitment->packedPermutedGraphMatrix,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     *pdwSingleCommitmentSize=dwSingleCommitmentSize;
     return (uint8_t*)pSHA256Commitment;
 }
@@ -1124,15 +1134,16 @@ PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKn
 PCRC32_REVEAL createSingleCRC32Reveal(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwRevealSize){
     PCRC32_REVEAL pCRC32Reveal;
     if (pSingleProof==NULL || pdwRevealSize==NULL) return NULL;
-    pCRC32Reveal=(PCRC32_REVEAL)malloc(pSingleProof->dwPackedMatrixSize+CRC32_REVEAL_HEADER_SIZE);
+    pCRC32Reveal=(PCRC32_REVEAL)malloc(pSingleProof->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE);
     if (pCRC32Reveal==NULL) return NULL;
+    memcpy(pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     if (bBit==0){
-        memcpy(pCRC32Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle+pSingleProof->dwPackedMatrixSize,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     }else{
-        memcpy(pCRC32Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle+pSingleProof->dwPackedMatrixSize,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     }
-    pCRC32Reveal->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
-    *pdwRevealSize=pSingleProof->dwPackedMatrixSize+CRC32_REVEAL_HEADER_SIZE;
+    pCRC32Reveal->dwPackedMatrixSize=pSingleProof->dwPackedMatrixSize;
+    *pdwRevealSize=pSingleProof->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE;
     return pCRC32Reveal;
 }
 
@@ -1192,15 +1203,16 @@ uint8_t* createCRC32RevealRound(PSINGLE_PROOF* pProofArray, PCHALLENGE_PACKET pC
 PSHA256_REVEAL createSingleSHA256Reveal(PSINGLE_PROOF pSingleProof,uint8_t bBit, out uint32_t* pdwRevealSize){
     PSHA256_REVEAL pSHA256Reveal;
     if (pSingleProof==NULL || pdwRevealSize==NULL) return NULL;
-    pSHA256Reveal=(PSHA256_REVEAL)malloc(pSingleProof->dwPackedMatrixSize+SHA256_REVEAL_HEADER_SIZE);
+    pSHA256Reveal=(PSHA256_REVEAL)malloc(pSingleProof->dwPackedMatrixSize*2+SHA256_REVEAL_HEADER_SIZE);
     if (pSHA256Reveal==NULL) return NULL;
+    memcpy(pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     if (bBit==0){
-        memcpy(pSHA256Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle+pSingleProof->dwPackedMatrixSize,pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     }else{
-        memcpy(pSHA256Reveal->packedPermutationOrCycle,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
+        memcpy(pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle+pSingleProof->dwPackedMatrixSize,pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     }
-    pSHA256Reveal->dwPackedPermutationOrCycleSize=pSingleProof->dwPackedMatrixSize;
-    *pdwRevealSize=pSingleProof->dwPackedMatrixSize+SHA256_REVEAL_HEADER_SIZE;
+    pSHA256Reveal->dwPackedMatrixSize=pSingleProof->dwPackedMatrixSize;
+    *pdwRevealSize=pSingleProof->dwPackedMatrixSize*2+SHA256_REVEAL_HEADER_SIZE;
     return pSHA256Reveal;
 }
 
@@ -1419,6 +1431,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     uint8_t bIndex;
     uint64_t qwChallengeBit;
     uint8_t* pbCRC32;
+    uint8_t* pbCRC32PermutedMatrix;
     uint8_t* pbUnpackedMatrix;
     uint8_t* pbUnpackedPermutedGraphMatrix;
     uint16_t wCheckDimension, wPermutedGraphDimension;
@@ -1428,23 +1441,34 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     pCRC32Commitment=(PCRC32_COMMITMENT)pbCommitmentData;
     pCRC32Reveal=(PCRC32_REVEAL)pbRevealData;
     for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
-        //Checking under/overflows in commitment record
-        if ((pCRC32Commitment->dwPackedPermutedMatrixSize+CRC32_COMMITMENT_HEADER_SIZE)>dwCommitmentDataLeft){
-            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
-            return ERROR_BAD_VALUE;
-        }
         //Checking under/overflows in reveal record
-        if ((pCRC32Reveal->dwPackedPermutationOrCycleSize+CRC32_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
+        if ((pCRC32Reveal->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE)>dwRevealDataLeft || pCRC32Reveal->dwPackedMatrixSize>dwRevealDataLeft){
             *pbErrorReason=ERROR_REASON_WRONG_VALUE;
             return ERROR_BAD_VALUE;
         }
-        //Computing CRC32
-        pbCRC32=crc32(pCRC32Reveal->packedPermutationOrCycle,pCRC32Reveal->dwPackedPermutationOrCycleSize);
+        //Computing CRC32 of permutedGraphMatrix 
+        pbCRC32PermutedMatrix=crc32(pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle,pCRC32Reveal->dwPackedMatrixSize);
+        if (pbCRC32PermutedMatrix==NULL){
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        //Computing CRC32 of cycle/permutation
+        pbCRC32=crc32(pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle+pCRC32Reveal->dwPackedMatrixSize,pCRC32Reveal->dwPackedMatrixSize);
         if (pbCRC32==NULL){
+            free(pbCRC32PermutedMatrix);
             *pbErrorReason=ERROR_REASON_SYSTEM;
             return ERROR_SYSTEM;
         }
         //Checking CRC32
+        if (memcmp(pCRC32Commitment->permutedGraphCRC32,pbCRC32PermutedMatrix,CRC32_SIZE)!=0){
+            free(pbCRC32);
+            free(pbCRC32PermutedMatrix);
+            *pbErrorReason=ERROR_REASON_CHEATING;
+            return ERROR_BAD_VALUE;
+        }
+        free(pbCRC32PermutedMatrix);
+
+        //Checking CRC32 of cycle/permutation
         if((qwChallengeBit&1)==0){
             if (memcmp(pCRC32Commitment->permutationCRC32,pbCRC32,CRC32_SIZE)!=0){
                 free(pbCRC32);
@@ -1460,13 +1484,13 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
         }
         free(pbCRC32);
         //Unpacking reveal matrix
-        pbUnpackedMatrix=unpackMatrix(pCRC32Reveal->dwPackedPermutationOrCycleSize,pCRC32Reveal->packedPermutationOrCycle,&wCheckDimension);
+        pbUnpackedMatrix=unpackMatrix(pCRC32Reveal->dwPackedMatrixSize,pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle+pCRC32Reveal->dwPackedMatrixSize,&wCheckDimension);
         if (pbUnpackedMatrix==NULL){
             *pbErrorReason=ERROR_REASON_SYSTEM;
             return ERROR_SYSTEM;
         }
         //Unpacking permuted graph matrix
-        pbUnpackedPermutedGraphMatrix=unpackMatrix(pCRC32Commitment->dwPackedPermutedMatrixSize,pCRC32Commitment->packedPermutedGraphMatrix,&wPermutedGraphDimension);
+        pbUnpackedPermutedGraphMatrix=unpackMatrix(pCRC32Reveal->dwPackedMatrixSize,pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle,&wPermutedGraphDimension);
         if (pbUnpackedPermutedGraphMatrix==NULL){
             free(pbUnpackedMatrix);
             *pbErrorReason=ERROR_REASON_SYSTEM;
@@ -1511,11 +1535,11 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
         //Next challenge bit
         qwChallengeBit=qwChallengeBit>>1;
         //Update data left   
-        dwCommitmentDataLeft=dwCommitmentDataLeft-(pCRC32Commitment->dwPackedPermutedMatrixSize+CRC32_COMMITMENT_HEADER_SIZE);
-        dwRevealDataLeft=dwRevealDataLeft-(pCRC32Reveal->dwPackedPermutationOrCycleSize+CRC32_REVEAL_HEADER_SIZE);
+        dwCommitmentDataLeft=dwCommitmentDataLeft-sizeof(CRC32_COMMITMENT);
+        dwRevealDataLeft=dwRevealDataLeft-(pCRC32Reveal->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE);
         //Go to next entries
-        pCRC32Commitment=(PCRC32_COMMITMENT)(((uint8_t*)pCRC32Commitment)+pCRC32Commitment->dwPackedPermutedMatrixSize+CRC32_COMMITMENT_HEADER_SIZE);
-        pCRC32Reveal=(PCRC32_REVEAL)(((uint8_t*)pCRC32Reveal)+pCRC32Reveal->dwPackedPermutationOrCycleSize+CRC32_REVEAL_HEADER_SIZE);
+        pCRC32Commitment=(PCRC32_COMMITMENT)(((uint8_t*)pCRC32Commitment)+sizeof(CRC32_COMMITMENT));
+        pCRC32Reveal=(PCRC32_REVEAL)(((uint8_t*)pCRC32Reveal)+pCRC32Reveal->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE);
     }
     //Proof worked
     *pbErrorReason=ERROR_REASON_NONE;
@@ -1550,6 +1574,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     uint8_t bIndex;
     uint64_t qwChallengeBit;
     uint8_t* pbSHA256;
+    uint8_t* pbSHA256PermutedGraph;
     uint8_t* pbUnpackedMatrix;
     uint8_t* pbUnpackedPermutedGraphMatrix;
     uint16_t wCheckDimension, wPermutedGraphDimension;
@@ -1559,22 +1584,31 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     pSHA256Commitment=(PSHA256_COMMITMENT)pbCommitmentData;
     pSHA256Reveal=(PSHA256_REVEAL)pbRevealData;
     for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
-        //Checking under/overflows in commitment record
-        if ((pSHA256Commitment->dwPackedPermutedMatrixSize+SHA256_COMMITMENT_HEADER_SIZE)>dwCommitmentDataLeft){
-            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
-            return ERROR_BAD_VALUE;
-        }
         //Checking under/overflows in reveal record
-        if ((pSHA256Reveal->dwPackedPermutationOrCycleSize+SHA256_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
+        if ((pSHA256Reveal->dwPackedMatrixSize+SHA256_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
             *pbErrorReason=ERROR_REASON_WRONG_VALUE;
             return ERROR_BAD_VALUE;
         }
         //Computing SHA256
-        pbSHA256=sha256(pSHA256Reveal->packedPermutationOrCycle,pSHA256Reveal->dwPackedPermutationOrCycleSize);
-        if (pbSHA256==NULL){
+        pbSHA256PermutedGraph=sha256(pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle,pSHA256Reveal->dwPackedMatrixSize);
+        if (pbSHA256PermutedGraph==NULL){
             *pbErrorReason=ERROR_REASON_SYSTEM;
             return ERROR_SYSTEM;
         }
+        //Computing SHA256
+        pbSHA256=sha256(pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle+pSHA256Reveal->dwPackedMatrixSize,pSHA256Reveal->dwPackedMatrixSize);
+        if (pbSHA256==NULL){
+            free(pbSHA256PermutedGraph);
+            *pbErrorReason=ERROR_REASON_SYSTEM;
+            return ERROR_SYSTEM;
+        }
+        if (memcmp(pSHA256Commitment->permutedGraphSHA256,pbSHA256PermutedGraph,SHA256_SIZE)!=0){
+            free(pbSHA256);
+            free(pbSHA256PermutedGraph);
+            *pbErrorReason=ERROR_REASON_CHEATING;
+            return ERROR_SYSTEM;
+        }
+        free(pbSHA256PermutedGraph);
         //Checking SHA256
         if((qwChallengeBit&1)==0){
             if (memcmp(pSHA256Commitment->permutationSHA256,pbSHA256,SHA256_SIZE)!=0){
@@ -1591,13 +1625,13 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
         }
         free(pbSHA256);
         //Unpacking reveal matrix
-        pbUnpackedMatrix=unpackMatrix(pSHA256Reveal->dwPackedPermutationOrCycleSize,pSHA256Reveal->packedPermutationOrCycle,&wCheckDimension);
+        pbUnpackedMatrix=unpackMatrix(pSHA256Reveal->dwPackedMatrixSize,pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle+pSHA256Reveal->dwPackedMatrixSize,&wCheckDimension);
         if (pbUnpackedMatrix==NULL){
             *pbErrorReason=ERROR_REASON_SYSTEM;
             return ERROR_SYSTEM;
         }
         //Unpacking permuted graph matrix
-        pbUnpackedPermutedGraphMatrix=unpackMatrix(pSHA256Commitment->dwPackedPermutedMatrixSize,pSHA256Commitment->packedPermutedGraphMatrix,&wPermutedGraphDimension);
+        pbUnpackedPermutedGraphMatrix=unpackMatrix(pSHA256Reveal->dwPackedMatrixSize,pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle,&wPermutedGraphDimension);
         if (pbUnpackedPermutedGraphMatrix==NULL){
             free(pbUnpackedMatrix);
             *pbErrorReason=ERROR_REASON_SYSTEM;
@@ -1642,11 +1676,11 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
         //Next challenge bit
         qwChallengeBit=qwChallengeBit>>1;
         //Update data left   
-        dwCommitmentDataLeft=dwCommitmentDataLeft-(pSHA256Commitment->dwPackedPermutedMatrixSize+SHA256_COMMITMENT_HEADER_SIZE);
-        dwRevealDataLeft=dwRevealDataLeft-(pSHA256Reveal->dwPackedPermutationOrCycleSize+SHA256_REVEAL_HEADER_SIZE);
+        dwCommitmentDataLeft=dwCommitmentDataLeft-sizeof(SHA256_COMMITMENT);
+        dwRevealDataLeft=dwRevealDataLeft-(pSHA256Reveal->dwPackedMatrixSize*2+SHA256_REVEAL_HEADER_SIZE);
         //Go to next entries
-        pSHA256Commitment=(PSHA256_COMMITMENT)(((uint8_t*)pSHA256Commitment)+pSHA256Commitment->dwPackedPermutedMatrixSize+SHA256_COMMITMENT_HEADER_SIZE);
-        pSHA256Reveal=(PSHA256_REVEAL)(((uint8_t*)pSHA256Reveal)+pSHA256Reveal->dwPackedPermutationOrCycleSize+SHA256_REVEAL_HEADER_SIZE);
+        pSHA256Commitment=(PSHA256_COMMITMENT)(((uint8_t*)pSHA256Commitment)+sizeof(SHA256_COMMITMENT));
+        pSHA256Reveal=(PSHA256_REVEAL)(((uint8_t*)pSHA256Reveal)+pSHA256Reveal->dwPackedMatrixSize*2+SHA256_REVEAL_HEADER_SIZE);
     }
     //Proof worked
     *pbErrorReason=ERROR_REASON_NONE;
