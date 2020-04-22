@@ -165,7 +165,8 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
     uint16_t wDimension;
     uint32_t dwUnpackedMatrixSize;
     PGRAPH pZKNGraph;
-    if (pZKNState==NULL) return ERROR_SYSTEM;
+    if (pZKNState==NULL||pGraphSetPacket==NULL) return ERROR_SYSTEM;
+    if (dwPacketSize<GRAPH_SET_PACKET_HEADER_SIZE) return ERROR_REASON_WRONG_VALUE;
     signHash=badPKCSUnpadHash(pbDecryptedSignature,dsSize);
     if (signHash==NULL) return ERROR_SYSTEM;
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
@@ -182,9 +183,11 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
     pbUnpackedMatrix=unpackMatrix(pGraphSetPacket->dwPackedMatrixSize,pGraphSetPacket->bPackedMatrixData,&wDimension);
     if (pbUnpackedMatrix==NULL) return ERROR_BAD_VALUE;
 
-    if (wDimension!=pZKNState->wDefaultVerticeCount) return ERROR_BAD_VALUE;
+    if (wDimension!=pZKNState->wDefaultVerticeCount) {
+        free(pbUnpackedMatrix);
+        return ERROR_BAD_VALUE;
+    }
     dwUnpackedMatrixSize=(((uint32_t) wDimension)*(uint32_t)wDimension);
-    if (dwUnpackedMatrixSize>MAX_MATR_BYTE_SIZE) return ERROR_BAD_VALUE;
 
     if (pZKNState->pbFLAG==NULL){
         plHolder=malloc(FLAG_ARRAY_SIZE);
@@ -198,7 +201,10 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
     if (pZKNState->pZKnGraph!=NULL) free(pZKNState->pZKnGraph->pbGraphData);
     free(pZKNState->pZKnGraph);
     plHolder=malloc(sizeof(GRAPH));
-    if (plHolder==NULL) return ERROR_SYSTEM;
+    if (plHolder==NULL) {
+        free(pbUnpackedMatrix);
+        return ERROR_SYSTEM;
+    }
     pZKNState->pZKnGraph=(PGRAPH)plHolder;
     memcpy(pZKNState->pbFLAG,pGraphSetPacket->FLAG,FLAG_ARRAY_SIZE);
     pZKNGraph=pZKNState->pZKnGraph;
@@ -300,7 +306,9 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
     uint8_t *pbUnpackedMatr;
     uint16_t wDimension;
     if (pbPackedFullKnowledge==NULL) return NULL;
+    if (dwPackedFullKnowledgeSize<FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE) return NULL;
     pFknForStorage=(PFULL_KNOWLEDGE_FOR_STORAGE)pbPackedFullKnowledge;
+    if ((pFknForStorage->dwSinglePackedMatrixSize*2)!=(dwPackedFullKnowledgeSize-FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE) || pFknForStorage->dwSinglePackedMatrixSize>MAX_MATR_BYTE_SIZE) return NULL;
     pFullKnowledge=(PFULL_KNOWLEDGE)malloc(sizeof(FULL_KNOWLEDGE));
     if (pFullKnowledge==NULL) return NULL;
     pbUnpackedMatr=unpackMatrix(pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData,&wDimension);
@@ -335,7 +343,7 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
 */
 uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize){
     PINITIAL_SETTING_PACKET pInitialSettingPacket;
-    if (dwPacketSize<sizeof(INITIAL_SETTING_PACKET)) return 0;
+    if (dwPacketSize<sizeof(INITIAL_SETTING_PACKET)||pbInitialSettingPacket==NULL) return 0;
     pInitialSettingPacket=(PINITIAL_SETTING_PACKET)pbInitialSettingPacket;
     return pInitialSettingPacket->wVerticeCount;
 }
@@ -454,6 +462,8 @@ PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState,
     return value:
         SUCCESS - pointer to PROOF_HELPER structure initialized with values needed for constructing proofs
         ERROR - NULL
+    fuzz status:
+        FUZZED
 */
 PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFIGURATION_PACKET pProofConfigurationPacket, uint32_t dwPacketSize, out uint8_t* pbErrorReason){
     PPROOF_HELPER pProofHelper;
@@ -464,6 +474,10 @@ PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFI
         *(pbErrorReason)=ERROR_REASON_SYSTEM;
         return NULL;
     }
+    if  (dwPacketSize<PROOF_CONFIGURATON_PACKET_HEADER_SIZE){
+        *(pbErrorReason)=ERROR_REASON_WRONG_VALUE;
+        return NULL;
+    }
     if (pProofConfigurationPacket->bCheckCount < MINIMUM_CHECK_COUNT || pProofConfigurationPacket->bCheckCount > MAXIMUM_CHECK_COUNT){
         *pbErrorReason=ERROR_REASON_WRONG_VALUE;
         return NULL;
@@ -472,7 +486,11 @@ PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFI
         *pbErrorReason=ERROR_REASON_WRONG_VALUE;
         return NULL;
     }
-    pbUnpackedMatrix=unpackMatrix((uint16_t)pProofConfigurationPacket->dwPackedMatrixSize, pProofConfigurationPacket->bPackedMatrixData,&wDimension);
+    if (pProofConfigurationPacket->dwPackedMatrixSize!=(dwPacketSize-PROOF_CONFIGURATON_PACKET_HEADER_SIZE) || pProofConfigurationPacket->dwPackedMatrixSize==0){
+        *pbErrorReason=ERROR_REASON_CHEATING;
+        return NULL;
+    }
+    pbUnpackedMatrix=unpackMatrix(pProofConfigurationPacket->dwPackedMatrixSize, pProofConfigurationPacket->bPackedMatrixData,&wDimension);
     if (pbUnpackedMatrix==NULL) 
     {
         *(pbErrorReason)=ERROR_REASON_SYSTEM;

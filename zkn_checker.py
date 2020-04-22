@@ -7,6 +7,7 @@ import socket
 import random
 import os
 import time
+from datetime import datetime
 private_key="""-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA7Ke0XHgzkBlvR1ZWyQIKtAB8uJyASo86hOGRSYJHGrI4WZVA
 GV3D/hXf5x5DXmL21NyiVeg7W+cqSB4KBp2zDH7CcLWDpMKv/SmgyWbZizCRqqvs
@@ -243,9 +244,16 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
 
 if __name__=="__main__":
     while True:
-        time.sleep(0.3)
+        #time.sleep(0.3)
+        time.sleep(1)
+        a=datetime.now()
         (resulting_status,storedFullKnowledge)=push_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG')
         print ('Result of initial check:','SUCCESS' if resulting_status==0 else 'FAIL')
-        time.sleep(0.5)
+        #time.sleep(0.5)
+        print(storedFullKnowledge)
         resulting_status=pull_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
         print('Result of additional check:','SUCCESS' if  resulting_status==0 else 'FAIL')
+
+        b=datetime.now()
+
+        print ('Time delta:',b-a)
