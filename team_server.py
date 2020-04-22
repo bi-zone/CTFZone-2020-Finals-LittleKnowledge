@@ -5,10 +5,7 @@ import logging
 import sys
 import os
 from ctypes import *
-try:
-    from .zkn_support import * 
-except ModuleNotFoundError:
-    from zkn_support import *
+from zkn_support import *
 (HOST,PORT)=('0.0.0.0',1337)
 verifier=Verifier(4,4,7)
 

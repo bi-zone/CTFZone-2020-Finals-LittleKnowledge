@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-from support import *
+from zkn_support import *
 v=Verifier(256,64,4)
 initialSetting=v.getInitialSettingPacket()
 print(initialSetting)

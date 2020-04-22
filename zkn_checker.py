@@ -1,6 +1,8 @@
 #!/usr/bin/python3
-
-from zkn_support import *
+try:
+    from .zkn_support import * 
+except (ModuleNotFoundError,ImportError):
+    from zkn_support import *
 import socket
 import random
 import os

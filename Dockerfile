@@ -13,7 +13,7 @@ RUN chown -R crypto /home/crypto
 USER crypto
 
 COPY team_server.py /home/crypto/
-COPY support.py /home/crypto/
+COPY zkn_support.py /home/crypto/
 COPY public.pem /home/crypto/
 COPY --from=builder /lib_build/obj/libzkn.so /home/crypto/
 #RUN ls -al /home/crypto
