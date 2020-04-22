@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from support import *
+from zkn_support import *
 import socket
 import random
 import os
@@ -161,7 +161,6 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
         next_stage=ERROR_RECEIVING_PROOF_CONFIGURATION
         sendMessage(team_socket,b'get_configuration')
         proof_configuration=recvMessage(team_socket)
-        print (proof_configuration)
         if (proof_configuration==b'ERROR'):
             team_socket.close()
             return ERROR_RECEIVING_PROOF_CONFIGURATION
@@ -244,7 +243,7 @@ if __name__=="__main__":
     while True:
         time.sleep(0.3)
         (resulting_status,storedFullKnowledge)=push_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG')
-        print ('Result of initial check:',resulting_status)
+        print ('Result of initial check:','SUCCESS' if resulting_status==0 else 'FAIL')
         time.sleep(0.5)
         resulting_status=pull_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
-        print('Result of additional check:',resulting_status)
+        print('Result of additional check:','SUCCESS' if  resulting_status==0 else 'FAIL')

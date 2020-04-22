@@ -2,3 +2,4 @@
 *.so
 */obj
 *__pycache__
+*.log
