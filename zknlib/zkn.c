@@ -1608,7 +1608,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     pSHA256Reveal=(PSHA256_REVEAL)pbRevealData;
     for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
         //Checking under/overflows in reveal record
-        if ((pSHA256Reveal->dwPackedMatrixSize+SHA256_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
+        if ((pSHA256Reveal->dwPackedMatrixSize*2+SHA256_REVEAL_HEADER_SIZE)>dwRevealDataLeft){
             *pbErrorReason=ERROR_REASON_WRONG_VALUE;
             return ERROR_BAD_VALUE;
         }
