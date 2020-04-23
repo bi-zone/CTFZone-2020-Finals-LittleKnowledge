@@ -1758,7 +1758,8 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     pAESReveal=(PAES_REVEAL)pbRevealData;
     for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
         //Checking under/overflows in commitment record
-        if ((pAESCommitment->dwSingleCiphertextPlusIVSize*2+pAESCommitment->dwPackedPermutedMatrixSize +AES_COMMITMENT_HEADER_SIZE) > dwCommitmentDataLeft || \
+        if (dwCommitmentDataLeft<AES_COMMITMENT_HEADER_SIZE || \
+        (pAESCommitment->dwSingleCiphertextPlusIVSize*2+pAESCommitment->dwPackedPermutedMatrixSize +AES_COMMITMENT_HEADER_SIZE) > dwCommitmentDataLeft || \
         pAESCommitment->dwSingleCiphertextPlusIVSize >dwCommitmentDataLeft ||
         pAESCommitment->dwPackedPermutedMatrixSize>dwCommitmentDataLeft){
             *pbErrorReason=ERROR_REASON_WRONG_VALUE;
