@@ -1461,7 +1461,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
     pCRC32Reveal=(PCRC32_REVEAL)pbRevealData;
     for (bIndex=0; bIndex<pZKnState->bCheckCount;bIndex=bIndex+1){
         //Checking under/overflows in reveal record
-        if ((pCRC32Reveal->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE)>dwRevealDataLeft || pCRC32Reveal->dwPackedMatrixSize>dwRevealDataLeft){
+        if (dwRevealDataLeft < CRC32_REVEAL_HEADER_SIZE || (pCRC32Reveal->dwPackedMatrixSize*2+CRC32_REVEAL_HEADER_SIZE)>dwRevealDataLeft || pCRC32Reveal->dwPackedMatrixSize>dwRevealDataLeft){
             *pbErrorReason=ERROR_REASON_WRONG_VALUE;
             return ERROR_BAD_VALUE;
         }

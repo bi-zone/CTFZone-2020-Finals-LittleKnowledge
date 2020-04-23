@@ -176,8 +176,6 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
             team_socket.close()
             return ERROR_COULDNT_CREATE_PROOFS
         commitment_packet=prover.createCommitmentPacket()
-        print ('Commitment')
-        print (commitment_packet)
         if commitment_packet==None:
             team_socket.close()
             return ERROR_COULDNT_CREATE_COMMITMENT_PACKET
@@ -196,8 +194,6 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
             team_socket.close()
             return ERROR_COULDNT_CREATE_CHALLENGE
         revealPacket=prover.createRevealPacket(challenge)
-        print ("Reveal")
-        print (revealPacket)
         if revealPacket==None:
             team_socket.close()
             return ERROR_BAD_CHALLENGE
@@ -259,4 +255,4 @@ if __name__=="__main__":
 
         b=datetime.now()
 
-        print ('Time delta:',b-a)
+        print ('Time delta:',(b-a).microseconds)
