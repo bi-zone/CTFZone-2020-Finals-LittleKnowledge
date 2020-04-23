@@ -337,7 +337,7 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     int tfmfd;
     int res;
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-    if (pData==NULL ||pdwPlaintextSize==NULL || dSize<AES_IV_SIZE) return NULL;
+    if (pData==NULL ||pdwPlaintextSize==NULL || dSize<(AES_IV_SIZE+AES_BLOCK_SIZE)) return NULL;
     pbPtBuf=malloc(dSize-AES_IV_SIZE);
 
     if (pbPtBuf==NULL) return NULL;
@@ -370,7 +370,7 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     char cbuf[CMSG_SPACE(4) + CMSG_SPACE(20)] = {0};
     struct af_alg_iv *iv;
     struct iovec iov;
-    if (pData==NULL || pdwPlaintextSize==NULL) return NULL;
+    if (pData==NULL || pdwPlaintextSize==NULL || dSize<(AES_IV_SIZE+AES_BLOCK_SIZE)) return NULL;
     pbPtBuf=calloc(dSize-AES_IV_SIZE,1);
     if (pbPtBuf==NULL) return NULL;
 
