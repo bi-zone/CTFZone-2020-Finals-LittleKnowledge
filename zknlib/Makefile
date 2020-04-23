@@ -14,7 +14,7 @@ test_debug: TEST_CFLAGS=-ggdb -fsanitize=address -I$(IDIR) -I$(PRNG_IDIR) -I$(MA
 test_debug: CFLAGS =-ggdb -fsanitize=address -Wall -Werror -fstack-protector-all -fpic -I$(IDIR) -I$(PRNG_IDIR) -I$(MATR_IDIR) -fvisibility=hidden
 
 fuzz: CC = clang
-fuzz: CFLAGS= -g -O1 -fsanitize=fuzzer,address,signed-integer-overflow -I$(IDIR) -I$(PRNG_IDIR) -I$(MATR_IDIR)
+fuzz: CFLAGS= -g -O1 -fsanitize=fuzzer,address,signed-integer-overflow -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -I$(IDIR) -I$(PRNG_IDIR) -I$(MATR_IDIR)
 
 ODIR=obj
 

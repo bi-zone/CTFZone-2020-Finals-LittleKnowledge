@@ -1093,6 +1093,7 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
 */
 uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolState,uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize){
     if (pZKnState==NULL || pZKnProtocolState==NULL || pbCommitmentData==NULL) return ERROR_SYSTEM;
+    if (dwCommitmentDataSize<COMMITMENT_PACKET_HEADER_SIZE) return ERROR_BAD_VALUE;
     if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete ){
         if ((pZKnState->simulationDisabled)!=0){
             return ERROR_BAD_VALUE;
@@ -1477,6 +1478,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             *pbErrorReason=ERROR_REASON_SYSTEM;
             return ERROR_SYSTEM;
         }
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
         //Checking CRC32
         if (memcmp(pCRC32Commitment->permutedGraphCRC32,pbCRC32PermutedMatrix,CRC32_SIZE)!=0){
             free(pbCRC32);
@@ -1484,9 +1486,11 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             *pbErrorReason=ERROR_REASON_CHEATING;
             return ERROR_BAD_VALUE;
         }
+#endif
         free(pbCRC32PermutedMatrix);
 
         //Checking CRC32 of cycle/permutation
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
         if((qwChallengeBit&1)==0){
             if (memcmp(pCRC32Commitment->permutationCRC32,pbCRC32,CRC32_SIZE)!=0){
                 free(pbCRC32);
@@ -1500,6 +1504,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
                 return ERROR_BAD_VALUE;
             }
         }
+#endif
         free(pbCRC32);
         //Unpacking reveal matrix
         pbUnpackedMatrix=unpackMatrix(pCRC32Reveal->dwPackedMatrixSize,pCRC32Reveal->packedPermutedGraphAndPermutationOrCycle+pCRC32Reveal->dwPackedMatrixSize,&wCheckDimension);
@@ -1607,6 +1612,10 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             *pbErrorReason=ERROR_REASON_WRONG_VALUE;
             return ERROR_BAD_VALUE;
         }
+        if (dwCommitmentDataLeft<sizeof(SHA256_COMMITMENT)){
+            *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+            return ERROR_BAD_VALUE;
+        }
         //Computing SHA256
         pbSHA256PermutedGraph=sha256(pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle,pSHA256Reveal->dwPackedMatrixSize);
         if (pbSHA256PermutedGraph==NULL){
@@ -1620,14 +1629,17 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             *pbErrorReason=ERROR_REASON_SYSTEM;
             return ERROR_SYSTEM;
         }
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
         if (memcmp(pSHA256Commitment->permutedGraphSHA256,pbSHA256PermutedGraph,SHA256_SIZE)!=0){
             free(pbSHA256);
             free(pbSHA256PermutedGraph);
             *pbErrorReason=ERROR_REASON_CHEATING;
             return ERROR_SYSTEM;
         }
+#endif
         free(pbSHA256PermutedGraph);
         //Checking SHA256
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
         if((qwChallengeBit&1)==0){
             if (memcmp(pSHA256Commitment->permutationSHA256,pbSHA256,SHA256_SIZE)!=0){
                 free(pbSHA256);
@@ -1641,6 +1653,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
                 return ERROR_BAD_VALUE;
             }
         }
+#endif
         free(pbSHA256);
         //Unpacking reveal matrix
         pbUnpackedMatrix=unpackMatrix(pSHA256Reveal->dwPackedMatrixSize,pSHA256Reveal->packedPermutedGraphAndPermutationOrCycle+pSHA256Reveal->dwPackedMatrixSize,&wCheckDimension);
@@ -1857,6 +1870,11 @@ uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason){
         bResult= ERROR_SYSTEM;
         goto protocol_reset;
     }
+    if (dwRevealPacketSize<REVEAL_PACKET_HEADER_SIZE){
+        *pbErrorReason=ERROR_REASON_WRONG_VALUE;
+        bResult=ERROR_BAD_VALUE;
+        goto protocol_reset;
+    }
     //Checking that the protocol is at the right stage
     if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete==0 || pZKnProtocolState->protocolProgress.isRandomnessStageComplete==0){
         *pbErrorReason=ERROR_REASON_TOO_EARLY;
@@ -1864,6 +1882,7 @@ uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason){
         goto protocol_reset;
     }
     pCommitmentPacket=(PCOMMITMENT_PACKET)pZKnProtocolState->pbCommitmentData;
+    
     //Checking commitment data is not under/overflowing
     if (pCommitmentPacket->dwDataSize!=(pZKnProtocolState->dwCommitmentDataSize-COMMITMENT_PACKET_HEADER_SIZE)){
         *pbErrorReason=ERROR_REASON_WRONG_VALUE;

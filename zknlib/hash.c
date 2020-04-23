@@ -197,6 +197,28 @@ unsigned char* aes128cbc_encrypt(unsigned char* pData, size_t dSize, unsigned ch
     int opfd;
     int tfmfd;
     int res;
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    if (pData==NULL || pdwCiphertextSize==NULL ||dSize==0) return NULL;
+    totalSize=dSize+sizeof(uint32_t);
+    if ((totalSize%16)!=0){
+        totalSize=totalSize+16-totalSize%16;
+    }
+    pbPtBuf=calloc(totalSize,1);
+    if (pbPtBuf==NULL) return NULL;
+    pbCtBuf=calloc(totalSize+AES_IV_SIZE,1);
+    if (pbCtBuf==NULL){
+        free(pbPtBuf);
+        return NULL;
+    }
+    *((uint32_t*)pbPtBuf)=(uint32_t)dSize;
+    memcpy(pbPtBuf+sizeof(uint32_t),pData,dSize);
+
+    memcpy(pbCtBuf,pbIV,AES_IV_SIZE);
+    memcpy(pbCtBuf+AES_IV_SIZE,pbPtBuf,totalSize);
+    free(pbPtBuf);
+    *(pdwCiphertextSize)=totalSize+AES_IV_SIZE;
+    return pbCtBuf;
+#else
     struct sockaddr_alg sa = {
         .salg_family = AF_ALG,
         .salg_type = "skcipher",
@@ -290,6 +312,7 @@ unsigned char* aes128cbc_encrypt(unsigned char* pData, size_t dSize, unsigned ch
     *(pdwCiphertextSize)=(uint32_t)(totalSize+AES_BLOCK_SIZE);
     free(pbPtBuf);
     return pbCtBuf;
+#endif
 }
 
 
@@ -313,6 +336,30 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     int opfd;
     int tfmfd;
     int res;
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    if (pData==NULL ||pdwPlaintextSize==NULL || dSize<AES_IV_SIZE) return NULL;
+    pbPtBuf=malloc(dSize-AES_IV_SIZE);
+
+    if (pbPtBuf==NULL) return NULL;
+    memcpy(pbPtBuf,pData+AES_IV_SIZE,dSize-AES_IV_SIZE);
+    dwPlaintextSize=*(uint32_t*)pbPtBuf;
+    if (dwPlaintextSize>(dSize-AES_IV_SIZE)) {
+        free(pbPtBuf);
+        return NULL;
+    }
+    pbFinalPtBuf=malloc(dwPlaintextSize);
+    if (pbFinalPtBuf==NULL){
+        free(pbPtBuf);
+        return NULL;
+    }
+    memcpy(pbFinalPtBuf,pbPtBuf+sizeof(uint32_t),(size_t)dwPlaintextSize);
+    *pdwPlaintextSize=dwPlaintextSize;
+
+    
+    free(pbPtBuf);
+    return pbFinalPtBuf;
+
+#else
     struct sockaddr_alg sa = {
         .salg_family = AF_ALG,
         .salg_type = "skcipher",
@@ -324,7 +371,7 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     struct af_alg_iv *iv;
     struct iovec iov;
     if (pData==NULL || pdwPlaintextSize==NULL) return NULL;
-    pbPtBuf=calloc(dSize-16,1);
+    pbPtBuf=calloc(dSize-AES_IV_SIZE,1);
     if (pbPtBuf==NULL) return NULL;
 
     tfmfd=socket(AF_ALG,SOCK_SEQPACKET,0);
@@ -385,7 +432,7 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     close(opfd);
     close(tfmfd);
     dwPlaintextSize=*(uint32_t*)pbPtBuf;
-    if (dwPlaintextSize>dSize) {
+    if (dwPlaintextSize>(dSize-AES_IV_SIZE)) {
         free(pbPtBuf);
         return NULL;
     }
@@ -400,4 +447,5 @@ unsigned char* aes128cbc_decrypt(unsigned char* pData, size_t dSize, unsigned ch
     
     free(pbPtBuf);
     return pbFinalPtBuf;
+#endif
 }
