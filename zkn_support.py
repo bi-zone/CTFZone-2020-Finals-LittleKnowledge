@@ -193,7 +193,6 @@ class Verifier:
             self.ZKnState=cast(result,POINTER(c_uint8))
             if (result==None): raise ZKnStateNotCreated("Couldn't create ZKnState (probably bad parameters)")
         except OSError as e:
-            #print (e)
             raise ZKnLibNotALib
     def getInitialSettingPacket(self):
         self.zknlib.createInitialSettingPacket.restype=c_void_p

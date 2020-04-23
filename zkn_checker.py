@@ -176,6 +176,8 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
             team_socket.close()
             return ERROR_COULDNT_CREATE_PROOFS
         commitment_packet=prover.createCommitmentPacket()
+        print ('Commitment')
+        print (commitment_packet)
         if commitment_packet==None:
             team_socket.close()
             return ERROR_COULDNT_CREATE_COMMITMENT_PACKET
@@ -194,6 +196,8 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
             team_socket.close()
             return ERROR_COULDNT_CREATE_CHALLENGE
         revealPacket=prover.createRevealPacket(challenge)
+        print ("Reveal")
+        print (revealPacket)
         if revealPacket==None:
             team_socket.close()
             return ERROR_BAD_CHALLENGE
@@ -250,7 +254,6 @@ if __name__=="__main__":
         (resulting_status,storedFullKnowledge)=push_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG')
         print ('Result of initial check:','SUCCESS' if resulting_status==0 else 'FAIL')
         #time.sleep(0.5)
-        print(storedFullKnowledge)
         resulting_status=pull_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
         print('Result of additional check:','SUCCESS' if  resulting_status==0 else 'FAIL')
 
