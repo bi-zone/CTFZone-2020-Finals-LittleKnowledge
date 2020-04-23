@@ -41,6 +41,7 @@ PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8
     pZKnState->bCheckCount=bCheckCount;
     pZKnState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
     pZKnState->pbFLAG=NULL;
+    pZKnState->simulationDisabled=0;
     pZKnState->pZKnGraph=NULL;
     return pZKnState;
 }
