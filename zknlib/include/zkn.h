@@ -6,7 +6,7 @@
 #include "hash.h"
 #include "../prng/include/prng.h"
 #include "../matrices/include/matr.h"
-#define P 863615239139 // Prime for Legendre PRF
+#define P 3581731379 // Prime for Legendre PRF
 #define RANDOM_R_SIZE 16
 #define FLAG_ARRAY_SIZE 2048
 

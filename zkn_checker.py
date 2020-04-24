@@ -628,7 +628,7 @@ if __name__=="__main__":
         a=datetime.now()
         (resulting_status,storedFullKnowledge)=push_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG')
         print ('Result of initial check:',error_disambiguation(resulting_status))
-        #time.sleep(0.5)
+        time.sleep(3.5)
         resulting_status=complex_pull_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
         print('Result of additional check:',error_disambiguation(resulting_status))
 

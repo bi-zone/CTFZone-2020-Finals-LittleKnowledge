@@ -8,7 +8,7 @@ from ctypes import *
 from zkn_support import *
 (HOST,PORT)=('0.0.0.0',1337)
 verifier=Verifier(4,4,7)
-
+#latest
 def update_graph(clientSocket):
     global verifier
     initial_setting_packet=verifier.getInitialSettingPacket()
