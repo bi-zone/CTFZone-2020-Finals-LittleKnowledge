@@ -84,32 +84,70 @@ def error_disambiguation(error_code):
     elif error_code==ERROR_BAD_INTIAL_SETTINGS:
         return "The initial settings packet is either malformed or contains unsupported values"
     elif error_code==ERROR_WITH_GRAPH_CREATION:
-        return "This shouldn't happen. Contact task administrator"
+        return "This shouldn't happen. Contact task administrator (Graph Creation Error)"
     elif error_code==ERROR_SENDING_GRAPH_SET_PACKET:
+        return "Connection dropped while sending graph set packet"
+    elif error_code==ERROR_WITH_FINISHING_UPDATE:
+        return "Didn't receive graph and flag update confirmation"
+    elif error_code==ERROR_COULDNT_START_PROTOCOL:
+        return "Couldn't start zero knowledge protocol"
+    elif error_code==ERROR_RECEIVING_PROOF_CONFIGURATION:
+        return "Problems with receiving proof configuration"
+    elif error_code==ERRONEOUS_PROOF_CONFIGURATION:
+        return "Proof configuration is wrong. You have probably been hacked"
+    elif error_code==ERROR_COULDNT_CREATE_PROOFS:
+        return "This shouldn't happen. Contact task administrator (Proof Creation Error)"
+    elif error_code==ERROR_COULDNT_CREATE_COMMITMENT_PACKET:
+        return "This shouldn't happen. Contact task administrator (Commitment Creation Error)"
+    elif error_code==ERROR_COULDNT_SAVE_COMMITMENT:
+        return "Couldn't save commitment"
+    elif error_code==ERROR_COULDNT_CREATE_CHALLENGE:
+        return "Couldn't create challenge"
+    elif error_code==ERROR_BAD_CHALLENGE:
+        return "Error in received challenge"
+    elif error_code==ERROR_SENDING_OR_GETTING_REVEAL:
+        return "Couldn't send reveal or get answer"
+    elif error_code==ERROR_UNDEFINED_ON_CORRECT_PROOF:
+        return "Received undefined error response to correct proof"
+    elif error_code==ERROR_SYSTEM_ON_VERIFIER_DURING_PROOF:
+        return "Received system error response to correct proof"
+    elif error_code==ERROR_NOT_PWN:
+        return "Received pwning error response to correct proof"
+    elif error_code==ERROR_NOT_EARLY:
+        return "Received EARLY error response to correct proof"
+    elif error_code==ERROR_NOT_CHEATING:
+        return "Received cheating error response to correct proof"
+    elif error_code==ERROR_NOT_UNKNOWN:
+        return "Received unknown error response to correct proof"
+    elif error_code==ERROR_WRONG_FLAG:
+        return "Received wrong flag. You have probably been hacked"
+    elif error_code==ERROR_SHOULD_BE_CHEATING_OR_PWNING:
+        return "Received success when sending erroneous commitments or proofs"
+    elif error_code==ERROR_NOT_EXITING_PROOF:
+        return "Couldn't exit protocol"
+    elif error_code==ERROR_NOT_EXITING:
+        return "Couldn't exit connection"
+    elif ERROR_SUCCESSFUL_WHEN_ERROR_INTENDED:
+        return "Received success when sending erroneous commitments or proofs"
+    else:
+        return "Contact administrator. The strangest error of them all: "+str(error_code)
 
-ERROR_WITH_FINISHING_UPDATE=14
+def is_success_return_code(return_code):
+    return return_code==SUCCESS
 
-ERROR_COULDNT_START_PROTOCOL=15
-ERROR_RECEIVING_PROOF_CONFIGURATION=16
-ERRONEOUS_PROOF_CONFIGURATION=17
-ERROR_COULDNT_CREATE_PROOFS=18
-ERROR_COULDNT_CREATE_COMMITMENT_PACKET=19
-ERROR_COULDNT_SAVE_COMMITMENT=20
-ERROR_COULDNT_CREATE_CHALLENGE=21
-ERROR_BAD_CHALLENGE=22
-ERROR_SENDING_OR_GETTING_REVEAL=42
-ERROR_UNDEFINED_ON_CORRECT_PROOF=23
-ERROR_SYSTEM_ON_VERIFIER_DURING_PROOF=24
-ERROR_NOT_PWN=25
-ERROR_NOT_EARLY=26
-ERROR_NOT_CHEATING=27
-ERROR_NOT_UNKNOWN=28
-ERROR_WRONG_FLAG=29
-ERROR_SHOULD_BE_CHEATING_OR_PWNING=30
-ERROR_NOT_EXITING_PROOF=31
-ERROR_NOT_EXITING=32
+def is_down_return_code(return_code):
+    return return_code==ERROR_CONNECTION_REFUSED
+def is_corrupt_return_code(return_code):
+    if return_code==ERRONEOUS_PROOF_CONFIGURATION or return_code==ERROR_WRONG_FLAG:
+        return True
+    else:
+        return False
+def is_mumble_return_code(return_code):
+    if is_success_return_code(return_code) or is_down_return_code(return_code) or is_corrupt_return_code(return_code):
+        return False
+    else:
+        return True
 
-ERROR_SUCCESSFUL_WHEN_ERROR_INTENDED=50
 
 def malform_buffer(buffer, minimum_sequential_change=17):
     strategy=random.randint(0,3)
@@ -142,7 +180,7 @@ def push_flag(HOST,PORT,flag):
         team_socket.settimeout(3)
         try:
             team_socket.connect((HOST,PORT))
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError,socket.timeout):
             team_socket.close()
             return (ERROR_CONNECTION_REFUSED,storedFN)
         next_stage=ERROR_COULDNT_START_UPDATE
@@ -201,7 +239,7 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
         team_socket.settimeout(3)
         try:
             team_socket.connect((HOST,PORT))
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError,socket.timeout):
             team_socket.close()
             return ERROR_CONNECTION_REFUSED
         next_stage=ERROR_COULDNT_START_PROTOCOL
@@ -284,6 +322,12 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
         if received_answer!=b'EXITING_PROOF':
             team_socket.close()
             return ERROR_NOT_EXITING_PROOF
+        sendMessage(team_socket,b'exit')
+
+        if recvMessage(team_socket)!=b'GOODBYE':
+            team_socket.close()
+            return ERROR_NOT_EXITING
+        team_socket.close()
         return SUCCESS
     except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError,socket.timeout,OSError) as e:
         try:
@@ -308,7 +352,7 @@ def multiple_challenges_before_pull(HOST,PORT,flag,storedFullKnowledge):
         team_socket.settimeout(3)
         try:
             team_socket.connect((HOST,PORT))
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError,socket.timeout):
             team_socket.close()
             return ERROR_CONNECTION_REFUSED
         next_stage=ERROR_COULDNT_START_PROTOCOL
@@ -401,6 +445,12 @@ def multiple_challenges_before_pull(HOST,PORT,flag,storedFullKnowledge):
         if received_answer!=b'EXITING_PROOF':
             team_socket.close()
             return ERROR_NOT_EXITING_PROOF
+        
+        sendMessage(team_socket,b'exit')
+        if recvMessage(team_socket)!=b'GOODBYE':
+            team_socket.close()
+            return ERROR_NOT_EXITING
+        team_socket.close()
         return SUCCESS
     except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError,socket.timeout,OSError) as e:
         try:
@@ -424,7 +474,7 @@ def bad_commitments_or_proofs(HOST,PORT,flag,storedFullKnowledge):
         team_socket.settimeout(3)
         try:
             team_socket.connect((HOST,PORT))
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError,socket.timeout):
             team_socket.close()
             return ERROR_CONNECTION_REFUSED
         next_stage=ERROR_COULDNT_START_PROTOCOL
@@ -562,7 +612,14 @@ def bad_commitments_or_proofs(HOST,PORT,flag,storedFullKnowledge):
             return next_stage
 
 
-
+def complex_pull_flag(HOST,PORT,flag,storedFullKnowledge):
+    chosen=random.randint(0,2)
+    if chosen==0:
+        return pull_flag(HOST,PORT,flag,storedFullKnowledge)
+    elif chosen==1:
+        return multiple_challenges_before_pull(HOST,PORT,flag,storedFullKnowledge)
+    else:
+        return bad_commitments_or_proofs(HOST,PORT,flag,storedFullKnowledge)
 
 if __name__=="__main__":
     while True:
@@ -570,16 +627,11 @@ if __name__=="__main__":
         #time.sleep(1)
         a=datetime.now()
         (resulting_status,storedFullKnowledge)=push_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG')
-        print ('Result of initial check:','SUCCESS' if resulting_status==0 else 'FAIL')
+        print ('Result of initial check:',error_disambiguation(resulting_status))
         #time.sleep(0.5)
-        resulting_status=pull_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
-        print('Result of additional check:','SUCCESS' if  resulting_status==0 else 'FAIL')
+        resulting_status=complex_pull_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
+        print('Result of additional check:',error_disambiguation(resulting_status))
 
         b=datetime.now()
 
         print ('Time delta:',(b-a).microseconds)
-        #resulting_status=multiple_challenges_before_pull(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
-        #print ('Result of multiple challenge check:',resulting_status)
-
-        resulting_status=bad_commitments_or_proofs(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
-        print ('Result of bad commitments or proofs check:',resulting_status)

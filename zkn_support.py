@@ -4,7 +4,8 @@ import struct
 import os
 from Crypto.PublicKey import RSA
 from Crypto.Util.number import bytes_to_long, long_to_bytes
-ZKNLIBRARY_NAME='./libzkn.so'
+
+ZKNLIBRARY_NAME=os.path.join(os.path.dirname(__file__),'libzkn.so')
 FLAG_ARRAY_SIZE=2048
 class TooMuchData(Exception):
     pass
