@@ -26,12 +26,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size){
     freeFullKnowledge(pFullKnowledge);
     return 0;
 #endif
+#define UPDATE_ZKN_FUZZING
 #ifdef UPDATE_ZKN_FUZZING
     PZKN_STATE pZKnState;
     uint16_t wVerticeCount;
     uint8_t bCheckCount;
     uint8_t bUsedAlgs;
     uint8_t bResult;
+    unsigned char * updatedData;
+    unsigned char * signature;
     unsigned char RANDOMR[16];
     memset(RANDOMR,0,16);
     if (Size<260){
@@ -43,8 +46,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size){
     bUsedAlgs=*(Data+2);
     pZKnState=initializeZKnState(wVerticeCount,bCheckCount,bUsedAlgs);
     if (pZKnState==NULL) return 1;
-    Data=Data+3;
-    bResult=updateZKnGraph(pZKnState,(PGRAPH_SET_PACKET)(Data+256),(uint32_t)(Size-259),Data,256,RANDOMR);
+    signature=malloc(256);
+    updatedData=malloc(Size-259);
+    memcpy(updatedData,Data+259,Size-259);
+    memcpy(signature,Data+3,256);
+    bResult=updateZKnGraph(pZKnState,(PGRAPH_SET_PACKET)(updatedData),(uint32_t)(Size-259),signature,256,RANDOMR);
+    free(updatedData);
+    free(signature);
     destroyZKnState(pZKnState);
     return 0;
 #endif
@@ -58,6 +66,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size){
     free(pNewBuffer);
     return 0;
 #endif
+#ifdef CHECK_PROOF_FUZZING
     unsigned char update_zkn_graph_packet[2102]={ 0xaf, 0xc5, 0xf5, 0xdd, 0x3, 0xc7, 0xac, 0x41, 0x5e, 0xf6, 0xbe, 0x45, 0x6a, 0x48, 0xf1, 0x7d, 0x54, 0x45, 0x53, 0x54, 0x5f, 0x46, 0x4c, 0x41, 0x47, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, \
 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, \
 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, \
@@ -182,6 +191,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size){
     destroyZKnProtocolState(pZKnProtocolState);
     destroyZKnState(pZKnState);
     return 0;
-
+#endif
 
 };
