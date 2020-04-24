@@ -70,6 +70,47 @@ ERROR_SHOULD_BE_CHEATING_OR_PWNING=30
 ERROR_NOT_EXITING_PROOF=31
 ERROR_NOT_EXITING=32
 
+ERROR_SUCCESSFUL_WHEN_ERROR_INTENDED=50
+
+def error_disambiguation(error_code):
+    if error_code==SUCCESS:
+        return "Everything went fine"
+    elif error_code==ERROR_CONNECTION_REFUSED:
+        return "Couldn't connect to team server"
+    elif error_code==ERROR_COULDNT_START_UPDATE:
+        return "Couldn't start flag and matrix update"
+    elif error_code==ERROR_DIDNT_RECEIVE_INITIAL_SETTINGS:
+        return "Didn't receive initial settings from team server"
+    elif error_code==ERROR_BAD_INTIAL_SETTINGS:
+        return "The initial settings packet is either malformed or contains unsupported values"
+    elif error_code==ERROR_WITH_GRAPH_CREATION:
+        return "This shouldn't happen. Contact task administrator"
+    elif error_code==ERROR_SENDING_GRAPH_SET_PACKET:
+
+ERROR_WITH_FINISHING_UPDATE=14
+
+ERROR_COULDNT_START_PROTOCOL=15
+ERROR_RECEIVING_PROOF_CONFIGURATION=16
+ERRONEOUS_PROOF_CONFIGURATION=17
+ERROR_COULDNT_CREATE_PROOFS=18
+ERROR_COULDNT_CREATE_COMMITMENT_PACKET=19
+ERROR_COULDNT_SAVE_COMMITMENT=20
+ERROR_COULDNT_CREATE_CHALLENGE=21
+ERROR_BAD_CHALLENGE=22
+ERROR_SENDING_OR_GETTING_REVEAL=42
+ERROR_UNDEFINED_ON_CORRECT_PROOF=23
+ERROR_SYSTEM_ON_VERIFIER_DURING_PROOF=24
+ERROR_NOT_PWN=25
+ERROR_NOT_EARLY=26
+ERROR_NOT_CHEATING=27
+ERROR_NOT_UNKNOWN=28
+ERROR_WRONG_FLAG=29
+ERROR_SHOULD_BE_CHEATING_OR_PWNING=30
+ERROR_NOT_EXITING_PROOF=31
+ERROR_NOT_EXITING=32
+
+ERROR_SUCCESSFUL_WHEN_ERROR_INTENDED=50
+
 def malform_buffer(buffer, minimum_sequential_change=17):
     strategy=random.randint(0,3)
     if (strategy==1 or strategy==2) and len(buffer)<=minimum_sequential_change:
@@ -86,7 +127,7 @@ def malform_buffer(buffer, minimum_sequential_change=17):
         chosen=random.randint(0,positions)
         return buffer[:chosen]+os.urandom(minimum_sequential_change)+buffer[chosen+minimum_sequential_change:]
     elif strategy==3:
-        return os.urandom(random.randint(1,len(buffer)))
+        return os.urandom(random.randint(10,len(buffer)))
 
 
 def push_flag(HOST,PORT,flag):
@@ -96,8 +137,9 @@ def push_flag(HOST,PORT,flag):
     next_stage=-1
     storedFN=None
     try:
-
+        next_stage=ERROR_CONNECTION_REFUSED 
         team_socket=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        team_socket.settimeout(3)
         try:
             team_socket.connect((HOST,PORT))
         except ConnectionRefusedError:
@@ -122,6 +164,7 @@ def push_flag(HOST,PORT,flag):
         next_stage=ERROR_SENDING_GRAPH_SET_PACKET
         sendMessage(team_socket,graphSetPacket)
         sendMessage(team_socket,signature)
+        next_stage=ERROR_WITH_FINISHING_UPDATE
         result=recvMessage(team_socket)
         if result!=b'SUCCESS':
             team_socket.close()
@@ -134,7 +177,11 @@ def push_flag(HOST,PORT,flag):
             return (SUCCESS,storedFN)
         team_socket.close()
         return (SUCCESS,storedFN)
-    except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError) as e:
+    except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError, socket.timeout,OSError) as e:
+        try:
+            team_socket.close()
+        except OSError:
+            pass
         if flag_pushed:
             return (SUCCESS,storedFN)
         else:
@@ -149,7 +196,9 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
     prover=Prover.restoreFromStorage(flag,private_key,storedFullKnowledge)
     flag_received=False
     try:
+        next_stage=ERROR_CONNECTION_REFUSED
         team_socket=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        team_socket.settimeout(3)
         try:
             team_socket.connect((HOST,PORT))
         except ConnectionRefusedError:
@@ -236,16 +285,289 @@ def pull_flag(HOST,PORT,flag,storedFullKnowledge):
             team_socket.close()
             return ERROR_NOT_EXITING_PROOF
         return SUCCESS
-    except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError) as e:
+    except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError,socket.timeout,OSError) as e:
+        try:
+            team_socket.close()
+        except OSError:
+            pass
         if flag_received:
             return SUCCESS
         else:
             return next_stage
 
+
+def multiple_challenges_before_pull(HOST,PORT,flag,storedFullKnowledge):
+    global private_key
+    if isinstance(flag,str):
+        flag=flag.encode()
+    prover=Prover.restoreFromStorage(flag,private_key,storedFullKnowledge)
+    flag_received=False
+    try:
+        next_stage=ERROR_CONNECTION_REFUSED
+        team_socket=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        team_socket.settimeout(3)
+        try:
+            team_socket.connect((HOST,PORT))
+        except ConnectionRefusedError:
+            team_socket.close()
+            return ERROR_CONNECTION_REFUSED
+        next_stage=ERROR_COULDNT_START_PROTOCOL
+
+        starting_time=datetime.now() 
+        
+        sendMessage(team_socket,b'start_zkn_protocol')
+        if recvMessage(team_socket)!=b'STARTING_PROTOCOL':
+            team_socket.close()
+            return ERROR_COULDNT_START_PROTOCOL
+        next_stage=ERROR_RECEIVING_PROOF_CONFIGURATION
+        sendMessage(team_socket,b'get_configuration')
+        proof_configuration=recvMessage(team_socket)
+        if (proof_configuration==b'ERROR'):
+            team_socket.close()
+            return ERROR_RECEIVING_PROOF_CONFIGURATION
+        proof_helper_result=prover.initializeProofHelper(proof_configuration)
+        if not proof_helper_result:
+            team_socket.close()
+            return ERRONEOUS_PROOF_CONFIGURATION
+        proofs_result=prover.createProofs()
+        if not proofs_result:
+            team_socket.close()
+            return ERROR_COULDNT_CREATE_PROOFS
+        commitment_packet=prover.createCommitmentPacket()
+        if commitment_packet==None:
+            team_socket.close()
+            return ERROR_COULDNT_CREATE_COMMITMENT_PACKET
+        next_stage=ERROR_COULDNT_SAVE_COMMITMENT
+        sendMessage(team_socket,b'save_commitment')
+        
+        
+        sendMessage(team_socket,commitment_packet)
+        
+
+        if recvMessage(team_socket)!=b'SUCCESS':
+            team_socket.close()
+            return ERROR_COULDNT_SAVE_COMMITMENT
+        next_stage=ERROR_COULDNT_CREATE_CHALLENGE
+        count=0
+        while (datetime.now()-starting_time).seconds<10:
+
+            sendMessage(team_socket,b'create_challenge')
+        
+            challenge=recvMessage(team_socket)
+            count+=1
+            if challenge==b'ERROR':
+                team_socket.close()
+                return ERROR_COULDNT_CREATE_CHALLENGE
+    
+        revealPacket=prover.createRevealPacket(challenge)
+        if revealPacket==None:
+            team_socket.close()
+            return ERROR_BAD_CHALLENGE
+        next_stage=ERROR_SENDING_OR_GETTING_REVEAL 
+        sendMessage(team_socket,b'check_proof')
+        sendMessage(team_socket,revealPacket)
+        check_proof_result=recvMessage(team_socket)
+        if check_proof_result!=b'SUCCESS':
+            if check_proof_result!=b'ERROR':
+                team_socket.close()
+                return ERROR_UNDEFINED_ON_CORRECT_PROOF
+            error_message=recvMessage(team_socket)
+            if error_message.find(b'SYSTEM_ERROR')!=-1:
+                team_socket.close()
+                return ERROR_SYSTEM_ON_VERIFIER_DURING_PROOF
+            elif error_message.find(b'PWN_ATTEMPT_DETECTED')!=-1:
+                team_socket.close()
+                return ERROR_NOT_PWN
+            elif error_message.find(b'TOO_EARLY')!=-1:
+                team_socket.close()
+                return ERROR_NOT_EARLY
+            elif error_message.find(b'CHEATING_DETECTED')!=-1:
+                team_socket.close()
+                return ERROR_NOT_CHEATING
+            elif error_message.find(b'UNKNOWN_ERROR')!=-1:
+                team_socket.close()
+                return ERROR_NOT_UNKNOWN
+            else:
+                team_socket.close()
+                return ERROR_UNDEFINED_ON_CORRECT_PROOF
+        received_flag=recvMessage(team_socket)
+
+        if received_flag[:len(flag)]!=flag:
+            team_socket.close()
+            return ERROR_WRONG_FLAG
+        flag_received=True
+        sendMessage(team_socket,b"exit_protocol")
+        received_answer=recvMessage(team_socket)
+        if received_answer!=b'EXITING_PROOF':
+            team_socket.close()
+            return ERROR_NOT_EXITING_PROOF
+        return SUCCESS
+    except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError,socket.timeout,OSError) as e:
+        try:
+            team_socket.close()
+        except OSError:
+            pass
+        if flag_received:
+            return SUCCESS
+        else:
+            return next_stage
+
+def bad_commitments_or_proofs(HOST,PORT,flag,storedFullKnowledge):
+    global private_key
+    if isinstance(flag,str):
+        flag=flag.encode()
+    prover=Prover.restoreFromStorage(flag,private_key,storedFullKnowledge)
+    flag_received=False
+    try:
+        next_stage=ERROR_CONNECTION_REFUSED
+        team_socket=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        team_socket.settimeout(3)
+        try:
+            team_socket.connect((HOST,PORT))
+        except ConnectionRefusedError:
+            team_socket.close()
+            return ERROR_CONNECTION_REFUSED
+        next_stage=ERROR_COULDNT_START_PROTOCOL
+
+        starting_time=datetime.now() 
+        
+        sendMessage(team_socket,b'start_zkn_protocol')
+        if recvMessage(team_socket)!=b'STARTING_PROTOCOL':
+            team_socket.close()
+            return ERROR_COULDNT_START_PROTOCOL
+        next_stage=ERROR_RECEIVING_PROOF_CONFIGURATION
+        sendMessage(team_socket,b'get_configuration')
+        proof_configuration=recvMessage(team_socket)
+        if (proof_configuration==b'ERROR'):
+            team_socket.close()
+            return ERROR_RECEIVING_PROOF_CONFIGURATION
+        proof_helper_result=prover.initializeProofHelper(proof_configuration)
+        if not proof_helper_result:
+            team_socket.close()
+            return ERRONEOUS_PROOF_CONFIGURATION
+        proofs_result=prover.createProofs()
+        if not proofs_result:
+            team_socket.close()
+            return ERROR_COULDNT_CREATE_PROOFS
+        good_commitment_packet=prover.createCommitmentPacket()
+        if good_commitment_packet==None:
+            team_socket.close()
+            return ERROR_COULDNT_CREATE_COMMITMENT_PACKET
+        count=0
+        while (datetime.now()-starting_time).seconds<12:
+            count+=1
+            next_stage=ERROR_COULDNT_SAVE_COMMITMENT
+            whatToBreak=random.randint(0,1)
+            if whatToBreak==0:
+                commitment_packet=malform_buffer(good_commitment_packet)
+                while len(commitment_packet)<8:
+                    commitment_packet=malform_buffer(good_commitment_packet)
+            else:
+                commitment_packet=good_commitment_packet
+            sendMessage(team_socket,b'save_commitment')
+            sendMessage(team_socket,commitment_packet)
+            if recvMessage(team_socket)!=b'SUCCESS':
+                team_socket.close()
+                return ERROR_COULDNT_SAVE_COMMITMENT
+            next_stage=ERROR_COULDNT_CREATE_CHALLENGE
+
+            sendMessage(team_socket,b'create_challenge')
+        
+            challenge=recvMessage(team_socket)
+            if challenge==b'ERROR':
+                team_socket.close()
+                return ERROR_COULDNT_CREATE_CHALLENGE
+        
+            revealPacket=prover.createRevealPacket(challenge)
+            if (whatToBreak==1):
+                revealPacket=malform_buffer(revealPacket)
+            
+            if revealPacket==None:
+                team_socket.close()
+                return ERROR_BAD_CHALLENGE
+            next_stage=ERROR_SENDING_OR_GETTING_REVEAL 
+            sendMessage(team_socket,b'check_proof')
+            sendMessage(team_socket,revealPacket)
+            check_proof_result=recvMessage(team_socket)
+            if check_proof_result==b'SUCCESS':
+                team_socket.close()
+                return ERROR_SUCCESSFUL_WHEN_ERROR_INTENDED 
+            recvMessage(team_socket)
+        next_stage=ERROR_COULDNT_SAVE_COMMITMENT
+        sendMessage(team_socket,b'save_commitment')
+        sendMessage(team_socket,good_commitment_packet)
+        if recvMessage(team_socket)!=b'SUCCESS':
+            team_socket.close()
+            return ERROR_COULDNT_SAVE_COMMITMENT
+        
+        next_stage=ERROR_COULDNT_CREATE_CHALLENGE
+        sendMessage(team_socket,b'create_challenge')
+        
+        challenge=recvMessage(team_socket)
+        if challenge==b'ERROR':
+            team_socket.close()
+            return ERROR_COULDNT_CREATE_CHALLENGE
+        revealPacket=prover.createRevealPacket(challenge)
+        if revealPacket==None:
+            team_socket.close()
+            return ERROR_BAD_CHALLENGE
+        next_stage=ERROR_SENDING_OR_GETTING_REVEAL 
+        sendMessage(team_socket,b'check_proof')
+        sendMessage(team_socket,revealPacket)
+        check_proof_result=recvMessage(team_socket)
+        if check_proof_result!=b'SUCCESS':
+            if check_proof_result!=b'ERROR':
+                team_socket.close()
+                return ERROR_UNDEFINED_ON_CORRECT_PROOF
+            error_message=recvMessage(team_socket)
+            if error_message.find(b'SYSTEM_ERROR')!=-1:
+                team_socket.close()
+                return ERROR_SYSTEM_ON_VERIFIER_DURING_PROOF
+            elif error_message.find(b'PWN_ATTEMPT_DETECTED')!=-1:
+                team_socket.close()
+                return ERROR_NOT_PWN
+            elif error_message.find(b'TOO_EARLY')!=-1:
+                team_socket.close()
+                return ERROR_NOT_EARLY
+            elif error_message.find(b'CHEATING_DETECTED')!=-1:
+                team_socket.close()
+                return ERROR_NOT_CHEATING
+            elif error_message.find(b'UNKNOWN_ERROR')!=-1:
+                team_socket.close()
+                return ERROR_NOT_UNKNOWN
+            else:
+                team_socket.close()
+                return ERROR_UNDEFINED_ON_CORRECT_PROOF
+
+        received_flag=recvMessage(team_socket)
+
+        if received_flag[:len(flag)]!=flag:
+            team_socket.close()
+            return ERROR_WRONG_FLAG
+        flag_received=True
+        sendMessage(team_socket,b"exit_protocol")
+        received_answer=recvMessage(team_socket)
+        if received_answer!=b'EXITING_PROOF':
+            team_socket.close()
+            return ERROR_NOT_EXITING_PROOF
+        return SUCCESS
+    except (TooMuchData, NotEnoughData,ConnectionAbortedError,ConnectionResetError,socket.timeout,OSError) as e:
+        try:
+            team_socket.close()
+        except OSError:
+            pass
+        if flag_received:
+            return SUCCESS
+        else:
+            return next_stage
+
+
+
+
 if __name__=="__main__":
     while True:
         #time.sleep(0.3)
-        time.sleep(1)
+        #time.sleep(1)
         a=datetime.now()
         (resulting_status,storedFullKnowledge)=push_flag(TEAM_HOST,TEAM_PORT,b'TEST_FLAG')
         print ('Result of initial check:','SUCCESS' if resulting_status==0 else 'FAIL')
@@ -256,3 +578,8 @@ if __name__=="__main__":
         b=datetime.now()
 
         print ('Time delta:',(b-a).microseconds)
+        #resulting_status=multiple_challenges_before_pull(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
+        #print ('Result of multiple challenge check:',resulting_status)
+
+        resulting_status=bad_commitments_or_proofs(TEAM_HOST,TEAM_PORT,b'TEST_FLAG',storedFullKnowledge)
+        print ('Result of bad commitments or proofs check:',resulting_status)
