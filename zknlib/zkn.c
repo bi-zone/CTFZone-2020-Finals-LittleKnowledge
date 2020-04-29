@@ -1,3 +1,11 @@
+/*
+zkn.c - Main code file containing Zero-Knowledge functionality and exported functions
+The macro SAFE_VERSION is never used and represents the changes you would need to make,
+to make this secure
+Authors:
+    Innokentii Sennovskii (i.sennovskiy@bi.zone)
+*/
+
 #include "zkn.h"
 #include "hash.h"
 #include <stdlib.h>
@@ -21,9 +29,15 @@
 /*
     PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
     description:
-        Exported function, that initializes team server's zero knowledge state
+        This function intializes permanent Zero-Knowledge information (mostly configuration) for storage by the Verifier.
+        The information stored includes:
+            The number of vertices in the graph used for Zero-Knowledge (or the dimension of square graph adjacency matrix)
+            The number of checks during each parallel interaction
+            Supported commitment algorithms
     arguments:
-        wVerticeCount - desired matrix dimension
+        wVerticeCount - desired adjacency matrix dimension (Graph vertice count)
+        bCheckCount - the number of checks done in parallel
+        bSupportedAlgorithms - the choice of commitment algorithms
     return value:
         SUCCESS - pointer to the state structure
         ERROR - NULL
@@ -31,18 +45,29 @@
 PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
 {
     PZKN_STATE pZKnState;
+    //First we check that wVerticeCount and bCheckCount fit the chosen scope 
     if ((wVerticeCount>MAX_MATRIX_DIMENSION)|| (wVerticeCount<MIN_MATRIX_DIMENSION)) return NULL;
     if (bCheckCount<MINIMUM_CHECK_COUNT || bCheckCount>MAXIMUM_CHECK_COUNT) return NULL;
+    //bSupportedAlgorithms is bit-mask of three bits and at least one of them needs to be set.
     if (bSuppportedAlgorithms<1 || bSuppportedAlgorithms>7) return NULL;
+
     pZKnState=(PZKN_STATE)malloc(sizeof(ZKN_STATE));
     if (pZKnState==NULL) return NULL;
-
+    //Saving initial settings
     pZKnState->wDefaultVerticeCount=wVerticeCount;
     pZKnState->bCheckCount=bCheckCount;
     pZKnState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
+    //The flag and graph are to be initialized later by the checker
     pZKnState->pbFLAG=NULL;
-    pZKnState->simulationDisabled=0;
     pZKnState->pZKnGraph=NULL;
+    //Simulation mode is enabled by default. This is one of the intended bugs.
+    //It allows an attacker invert the commitment/challenge part of the protocol
+    // and commit to a proof, when he already knows the challenge
+#ifdef SAFE_VERSION
+    pZKnState->simulationDisabled=1;
+#else
+    pZKnState->simulationDisabled=0;
+#endif
     return pZKnState;
 }
 /*
@@ -66,9 +91,12 @@ void destroyZKnState(PZKN_STATE pZKnState)
 /*
     uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState)
     description:
-        Create inital packet containing RANDOM R and desired vertice count for checking server
+        This function is used at the beginning of Checker - Verifier interaction,
+        when the checker wants to set the Zero-Knowledge graph. Since the Prover chooses vertice count,
+        we need to creat a packet, that transmits the desired vertice count. We also include a random 16-byte
+        value in the packet to protect against reuse attacks.
     arguments:
-        pZKnState - initialized zero knowledge state
+        pZKnState - initialized Zero-Knowledge state
     return value:
         SUCCESS - pointer to memory containing the packet
         FAIL - NULL
@@ -77,9 +105,12 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
     PINITIAL_SETTING_PACKET pInitialSettingPacket;
     int fd;
     ssize_t bytesRead, totalBytesRead;
+
     if (pZKnState==NULL) return NULL;
+
     pInitialSettingPacket=(PINITIAL_SETTING_PACKET)malloc(sizeof(INITIAL_SETTING_PACKET));
     if (pInitialSettingPacket==NULL) return NULL;
+    //Read 16 bytes from /dev/urandom to the packet
     fd=open("/dev/urandom",O_RDONLY);
     if (fd==-1){
         free(pInitialSettingPacket);
@@ -96,6 +127,7 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
         totalBytesRead+=bytesRead;
     }
     close(fd);
+    //Add desired vertice count
     pInitialSettingPacket->wVerticeCount=pZKnState->wDefaultVerticeCount;
     return (uint8_t *) pInitialSettingPacket;
 }
@@ -103,7 +135,7 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
 /*
     void freeDanglingPointer(void* pPointer);
     description:
-        Free a pointer
+        Free a pointer (we need this to call "free" from python)
     arguments:
         pPointer - pointer
     return value:
@@ -113,11 +145,14 @@ void freeDanglingPointer(void* pPointer){
 
     free(pPointer);
 }
+
 /*
     uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize)
     description:
         Signature contents unparsing according to PKCS#1 v1.5, but with a bug that leads
-        to Bleichenbacher's arrack on signatures with e=3
+        to Bleichenbacher's arrack on signatures with e=3. We don't account for the size of the signature,
+        just take the first SHA256_SIZE bytes after 00 01 FF .. FF 00.
+
     arguments:
         pDecryptedSignature - pointer to array with signature bytes
         dsSize - size of the array
@@ -135,6 +170,12 @@ uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize){
     if (pDecryptedSignature[i]!=0) return NULL;
     i=i+1;
     if ((i>=dsSize)||((dsSize-i)<SHA256_SIZE)) return NULL;
+#ifdef SAFE_VERSION
+    //Check that there are no bytes left, apart from hash itself
+    //(We presume that the caller did not truncate the signature after exponentiation
+    // and the dsSize is the equal to modulus size in bytes
+    if ((dsSize-i)!=SHA256_SIZE) return NULL;
+#endif
     return pDecryptedSignature+i;
 }
 
@@ -142,14 +183,15 @@ uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize){
     uint32_t updateZKNGraph(PZKN_STATE pZKNState, PGRAPH_SET_PACKET pGraphSetPacket, uint32_t packetSize,
                             void* pDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR)
     description:
-        Update ZKN Graph and FLAG if all checks are passed
+        Update the graph and flag in Zero-Knowledge state. First we check the correctness and authenticity
+         of the data, then we update everything. 
     arguments:
         pZKNState - pointer to zero knowledge state structure
         pGraphSetPacket - pointer to GRAPH_SET_PACKET structure
         packetSize - size of packet
         pDecryptedSignature - pointer to decrypted signature array
         dsSize - size of decrypted signature array
-        pRANDOMR - pointer to RANDOM R (used for packet uniqueness) check
+        pRANDOMR - pointer to RANDOM R (used for packet uniqueness check)
     return value:
         SUCCESS - SUCCESS 
         ERROR:
@@ -159,57 +201,74 @@ uint8_t* badPKCSUnpadHash(uint8_t* pDecryptedSignature, uint32_t dsSize){
 */
 uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR)
 {
-    uint8_t* signHash;
-    uint8_t* actualHash;
-    uint8_t* plHolder;
+    uint8_t* pbHashFromPKCS;
+    uint8_t* pbComputedHash;
+    uint8_t* pbPlaceHolder;
     uint8_t* pbUnpackedMatrix;
-    uint16_t wDimension;
+    uint16_t wMatrixDimension;
     uint32_t dwUnpackedMatrixSize;
     PGRAPH pZKNGraph;
-    if (pZKNState==NULL||pGraphSetPacket==NULL) return ERROR_SYSTEM;
+    //First let's check that everything important is initialized
+    if (pZKNState==NULL||pGraphSetPacket==NULL || pbDecryptedSignature==NULL || pRANDOMR==NULL) return ERROR_SYSTEM;
+    //Check that packet size is at least big enough for the header (so that we don't try access uninitialized memory)
     if (dwPacketSize<GRAPH_SET_PACKET_HEADER_SIZE) return ERROR_REASON_WRONG_VALUE;
-    signHash=badPKCSUnpadHash(pbDecryptedSignature,dsSize);
-    if (signHash==NULL) return ERROR_SYSTEM;
+    //Get hash from the signature
+    pbHashFromPKCS=badPKCSUnpadHash(pbDecryptedSignature,dsSize);
+    //Signature contents may be incorrect
+    if (pbHashFromPKCS==NULL) return ERROR_BAD_VALUE;
+//We would like to check our code for unintended bugs before we ship it
+// so we want to fuzz it. Certain checks will make it impossible  to reach
+// critical functionality that can contain bugs, so we use preprocessor definitions
+// to disable such checks. Here sha256 and RANDOMR checks are disabled
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-    actualHash=sha256((unsigned char*) pGraphSetPacket,(ssize_t)dwPacketSize);
-    if (actualHash==NULL) return ERROR_SYSTEM;
-    if (memcmp(signHash,actualHash,SHA256_SIZE)!=0){
-        free(actualHash);
+    //Computing the actual hash of the packets
+    pbComputedHash=sha256((unsigned char*) pGraphSetPacket,(ssize_t)dwPacketSize);
+    if (pbComputedHash==NULL) return ERROR_SYSTEM;
+    //Comparing the hashes
+    if (memcmp(pbHashFromPKCS,pbComputedHash,SHA256_SIZE)!=0){
+        free(pbComputedHash);
         return ERROR_BAD_VALUE;
     }
-    free(actualHash);
+    free(pbComputedHash);
+    //Comparing RANDOMR to prevent reuse attacks
     if (memcmp(pRANDOMR,pGraphSetPacket->RANDOM_R,RANDOM_R_SIZE)!=0) return ERROR_BAD_VALUE;
 #endif
+    //Check that packed matrix size is correct
     if (pGraphSetPacket->dwPackedMatrixSize!=(dwPacketSize-GRAPH_SET_PACKET_HEADER_SIZE)) return ERROR_BAD_VALUE;
-    pbUnpackedMatrix=unpackMatrix(pGraphSetPacket->dwPackedMatrixSize,pGraphSetPacket->bPackedMatrixData,&wDimension);
+    //Unpack the matrix, since we'll mostly need it in unpacked form from now on
+    pbUnpackedMatrix=unpackMatrix(pGraphSetPacket->dwPackedMatrixSize,pGraphSetPacket->bPackedMatrixData,&wMatrixDimension);
     if (pbUnpackedMatrix==NULL) return ERROR_BAD_VALUE;
-
-    if (wDimension!=pZKNState->wDefaultVerticeCount) {
+    //Make sure the dimension of the matrix is the same as we requested in initial settings packet
+    if (wMatrixDimension!=pZKNState->wDefaultVerticeCount) {
         free(pbUnpackedMatrix);
         return ERROR_BAD_VALUE;
     }
-    dwUnpackedMatrixSize=(((uint32_t) wDimension)*(uint32_t)wDimension);
-
+    //Compute unpacked matrix size
+    dwUnpackedMatrixSize=(((uint32_t) wMatrixDimension)*(uint32_t)wMatrixDimension);
+    //Allocate memory for holding the flag if it's the first time we receive an update
     if (pZKNState->pbFLAG==NULL){
-        plHolder=malloc(FLAG_ARRAY_SIZE);
-        if (plHolder==NULL) 
+        pbPlaceHolder=malloc(FLAG_ARRAY_SIZE);
+        if (pbPlaceHolder==NULL) 
         {
             free(pbUnpackedMatrix);
             return ERROR_SYSTEM;
         }
-        pZKNState->pbFLAG=plHolder;
+        pZKNState->pbFLAG=pbPlaceHolder;
     }
+    //Free previous graph if it exists
     if (pZKNState->pZKnGraph!=NULL) free(pZKNState->pZKnGraph->pbGraphData);
     free(pZKNState->pZKnGraph);
-    plHolder=malloc(sizeof(GRAPH));
-    if (plHolder==NULL) {
+    //Allocate memory for a new one
+    pbPlaceHolder=malloc(sizeof(GRAPH));
+    if (pbPlaceHolder==NULL) {
         free(pbUnpackedMatrix);
         return ERROR_SYSTEM;
     }
-    pZKNState->pZKnGraph=(PGRAPH)plHolder;
+    //Save graph matrix, dimension, size, 
+    pZKNState->pZKnGraph=(PGRAPH)pbPlaceHolder;
     memcpy(pZKNState->pbFLAG,pGraphSetPacket->FLAG,FLAG_ARRAY_SIZE);
     pZKNGraph=pZKNState->pZKnGraph;
-    pZKNGraph->wVerticeCount=wDimension;
+    pZKNGraph->wVerticeCount=wMatrixDimension;
     pZKNGraph->dwMatrixSize=dwUnpackedMatrixSize;
     pZKNGraph->pbGraphData=pbUnpackedMatrix;
     return SUCCESS;
