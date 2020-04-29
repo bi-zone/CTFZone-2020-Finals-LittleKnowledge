@@ -1,7 +1,7 @@
 /*
 zkn.c - Main code file containing Zero-Knowledge functionality and exported functions
-The macro SAFE_VERSION is never used and represents the changes you would need to make,
-to make this secure
+
+The macro SAFE_VERSION is never used and represents the changes you would need to make, to fix the intended bugs
 Authors:
     Innokentii Sennovskii (i.sennovskiy@bi.zone)
 */
@@ -276,30 +276,33 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
 
 
 /*
-    PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount)
+    PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVerticeCount)
     description:
-        create FULL_KNOWLEDGE (Graph with a hamiltonian cycle)
+        Create a graph with a hamiltonian cycle and the cycle given the number of vertices,
+         save them both to a FULL_KNOWLEDGE structure and return the pointer
     arguments:
-        wVerticeCount - desired number of vertices
+        wVerticeCount - number of vertices in graph
     return value:
         SUCCESS - pointer to FULL_KNOWLEDGE structure
         ERROR - NULL
 
 */
-PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount){
+PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVerticeCount){
+    //We just proxy it to matrices/matr.c, which holds all the matrix logic
     return generateGraphAndCycleMatrix(wVerticeCount);
 };
 
 /*    
     void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge){
     description:
-        free FULL_KNOWLEDGE and all its members
+        Free all members of structure and the structure itself
     arguments:
         pfullKnowledge - pointer to FULL_KNOWLEDGE structure
     return value:
         N/A
 */
 void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge){
+    //Proxy to matrices/matr.c
     return freeFullKnowledge(pFullKnowledge);
 }
 
@@ -319,20 +322,25 @@ uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out uint32_
     uint8_t *pbPackedMatr,*pbPackedCycle;
     PFULL_KNOWLEDGE_FOR_STORAGE pPackedFullKnowledge;
     uint32_t dwPackedMatrSize,dwPackedCycleSize;
+    //Sanity check
     if (pFullKnowledge==NULL || pFullKnowledge->pbCycleMatrix==NULL || pFullKnowledge->pbGraphMatrix==NULL) return NULL;
+    //Pack graph matrix
     pbPackedMatr=packMatrix(pFullKnowledge->pbGraphMatrix,pFullKnowledge->wDimension,&dwPackedMatrSize);
     if (pbPackedMatr==NULL) return NULL;
+    //Pack cycle matrix
     pbPackedCycle=packMatrix(pFullKnowledge->pbCycleMatrix,pFullKnowledge->wDimension,&dwPackedCycleSize);
     if (pbPackedCycle==NULL) {
         free(pbPackedMatr);
         return NULL;
     }
+    //Make sure that packed matrices have the same size (should always be true)
     if (dwPackedMatrSize!=dwPackedCycleSize){
         fprintf(stderr,"WTF happened here?\n");
         free(pbPackedCycle);
         free(pbPackedMatr);
         return NULL;
     }
+    //Compute resulting Packed Full Knowledge size and allocate resulting memory
     dwComputedDataSize=FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE+((uint32_t) dwPackedCycleSize)*2;
     pPackedFullKnowledge=malloc(dwComputedDataSize);
     if (pPackedFullKnowledge==NULL){
@@ -340,22 +348,25 @@ uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out uint32_
         free(pbPackedMatr);
         return NULL;
     }
-    pPackedFullKnowledge->dwSinglePackedMatrixSize=(uint32_t)dwPackedMatrSize;
+    //Save single matrix size, and copy packed graph matrix and cycle matrix consecutively to packed knowledge
+    pPackedFullKnowledge->dwSinglePackedMatrixSize=dwPackedMatrSize;
     memcpy(pPackedFullKnowledge->bData,pbPackedMatr,pPackedFullKnowledge->dwSinglePackedMatrixSize);
     memcpy(pPackedFullKnowledge->bData+(pPackedFullKnowledge->dwSinglePackedMatrixSize),pbPackedCycle,pPackedFullKnowledge->dwSinglePackedMatrixSize);
     free(pbPackedCycle);
     free(pbPackedMatr);
+    //Output resulting packed full knowledge size
     *(pdwDataSize)=dwComputedDataSize;
+    //return pointer to memory containing packed full knowledge
     return (uint8_t*)pPackedFullKnowledge;
 }
 
 /*
     PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, uint32_t dwPackedFullKnowledgeSize)
     description:
-        Unpack FULL_KNOWLEDGE from a version nice for storage
+        Unpack FULL_KNOWLEDGE from a version for storage and save to a regular FULL_KNOWLEDGE structure
     arguments:
-        pbPackedFullKnowledge - pointer to array containing packed full knowledge
-        dwPackedFullKnowledgeSize - size of packed full knowledge array
+        pbPackedFullKnowledge - pointer to array containing packed Full Knowledge
+        dwPackedFullKnowledgeSize - size of packed Full Knowledge array
     return value:
         SUCCESS - pointer to unpacked FULL_KNOWLEDGE structure
         FAIL - NULL
@@ -365,28 +376,38 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
     PFULL_KNOWLEDGE_FOR_STORAGE pFknForStorage;
     uint8_t *pbUnpackedMatr;
     uint16_t wDimension;
+    //Sanity check
     if (pbPackedFullKnowledge==NULL) return NULL;
+    //Check that there is enough data to access header fields
     if (dwPackedFullKnowledgeSize<FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE) return NULL;
     pFknForStorage=(PFULL_KNOWLEDGE_FOR_STORAGE)pbPackedFullKnowledge;
+    //Check that sizes don't overflow anything and are in designated scope
     if ((pFknForStorage->dwSinglePackedMatrixSize*2)!=(dwPackedFullKnowledgeSize-FULL_KNOWLEDGE_FOR_STORAGE_HEADER_SIZE) || pFknForStorage->dwSinglePackedMatrixSize>MAX_MATR_BYTE_SIZE) return NULL;
+
     pFullKnowledge=(PFULL_KNOWLEDGE)malloc(sizeof(FULL_KNOWLEDGE));
     if (pFullKnowledge==NULL) return NULL;
+    //Unpack Graph matrix
     pbUnpackedMatr=unpackMatrix(pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData,&wDimension);
     if (pbUnpackedMatr==NULL){
         free(pFullKnowledge);
         return NULL;
     }
+    //Save matrix dimension and size in memory to FULL_KNOWLEDGE
     pFullKnowledge->wDimension=wDimension;
     pFullKnowledge->dwMatrixArraySize=((uint32_t)wDimension)*(uint32_t)wDimension;
 
+    //Save matrix unpacked graph matrix to full knowledge structure
     pFullKnowledge->pbGraphMatrix=pbUnpackedMatr;
-    pbUnpackedMatr=unpackMatrix((uint16_t)pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData+(pFknForStorage->dwSinglePackedMatrixSize),&wDimension);
+    //Unpack Cycle matrix
+    pbUnpackedMatr=unpackMatrix(pFknForStorage->dwSinglePackedMatrixSize,pFknForStorage->bData+(pFknForStorage->dwSinglePackedMatrixSize),&wDimension);
     if (pbUnpackedMatr==NULL){
         free(pFullKnowledge->pbGraphMatrix);
         free(pFullKnowledge);
         return NULL;
     }
+    //Save unpacked cycle matrix to Full Knowledge structure
     pFullKnowledge->pbCycleMatrix=pbUnpackedMatr;
+    //return pointer to FULL_KNOWLEDGE
     return pFullKnowledge;
 }
 
@@ -398,19 +419,21 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
         pbInitialSettingPacket - pointer to memory containing the initial setting packet
         dwPacketSize - size of the array
     return value:
-        SUCCESS - desired vertice count
+        SUCCESS - vertice count
         ERROR - 0
 */
 uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize){
     PINITIAL_SETTING_PACKET pInitialSettingPacket;
+    //Check that packet is big enough
     if (dwPacketSize<sizeof(INITIAL_SETTING_PACKET)||pbInitialSettingPacket==NULL) return 0;
     pInitialSettingPacket=(PINITIAL_SETTING_PACKET)pbInitialSettingPacket;
+    //Return vertice count
     return pInitialSettingPacket->wVerticeCount;
 }
 /*
     PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize)
     description:
-        Create a GraphSet packet
+        Create a packet for setting graph
     arguments:
         pFullKnowledge - pointer to FULL KNOWLEDGE structure
         pbRANDOM_R - pointer to array containing random_r from clinet
