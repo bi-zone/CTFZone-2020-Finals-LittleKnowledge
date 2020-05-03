@@ -26,7 +26,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size){
     freeFullKnowledge(pFullKnowledge);
     return 0;
 #endif
-#define UPDATE_ZKN_FUZZING
 #ifdef UPDATE_ZKN_FUZZING
     PZKN_STATE pZKnState;
     uint16_t wVerticeCount;

@@ -433,14 +433,14 @@ uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettin
 /*
     PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize)
     description:
-        Create a packet for setting graph
+        Create a packet for setting graph matrix and flag on the verifier
     arguments:
         pFullKnowledge - pointer to FULL KNOWLEDGE structure
         pbRANDOM_R - pointer to array containing random_r from clinet
         psbFLAG - pointer to FLAG array
         pdwGraphSetPacketSize - pointer to output resulting packet size
     return value:
-        SUCCESS - GraphSet packet
+        SUCCESS - pointer to the packet
         FAIL - NULL
 */
 PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize){
@@ -449,29 +449,34 @@ PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* p
     uint8_t* pbPackedMatrix;
     uint32_t dwPackedMatrixSize;
     dwPackedMatrixSize=0;
+    //Sanity check
     if (pFullKnowledge==NULL || pbRANDOM_R==NULL || psbFLAG==NULL || pdwGraphSetPacketSize==NULL) return NULL; 
+    //Pack Graph matrix
     pbPackedMatrix=packMatrix(pFullKnowledge->pbGraphMatrix,pFullKnowledge->wDimension,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL) return NULL;
+    //Compute and send packet size to the caller
     dwGraphSetPacketSize=GRAPH_SET_PACKET_HEADER_SIZE + dwPackedMatrixSize;
     *(pdwGraphSetPacketSize)=dwGraphSetPacketSize;
+    //Allocate memory for the packet
     pGraphSetPacket=(PGRAPH_SET_PACKET)calloc(dwGraphSetPacketSize,1);
     if(pGraphSetPacket==NULL){
         free(pbPackedMatrix);
         return NULL;
     }
+    //Fill the packet with packed matrix size, flag, RANDOM_R and packed matrix
     pGraphSetPacket->dwPackedMatrixSize=dwPackedMatrixSize;
-    
     memcpy(pGraphSetPacket->FLAG,psbFLAG,FLAG_ARRAY_SIZE);
     memcpy(pGraphSetPacket->RANDOM_R,pbRANDOM_R,RANDOM_R_SIZE);
     memcpy(pGraphSetPacket->bPackedMatrixData,pbPackedMatrix,dwPackedMatrixSize);
     free(pbPackedMatrix);
+    //Return pointer to the packet
     return pGraphSetPacket;
 }
 
 /*
     uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint32_t dwDesiredSignatureSize)
     description:
-        Create the PKCS#1 v1.5 signature,just without the actual sign operation
+        Create the PKCS#1 v1.5 signature array without cryptography (signing is handled by the caller)
     arguments:
         pbData - pointer to array containing data to sign
         dwDataSize - size of array in bytes
@@ -483,20 +488,28 @@ PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* p
 uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint32_t dwDesiredSignatureSize){
     uint8_t* pbHash;
     uint8_t* pbSign;
+    //Check that desired signature size will fit at least 00 01 FF 00 HASH
     if (dwDesiredSignatureSize<(SHA256_SIZE+4)) return NULL;
+    //Compute sha256
     pbHash=sha256(pbData,(ssize_t)dwDataSize);
     if (pbHash==NULL) return NULL;
+    //Allocate memory for signature
     pbSign=calloc(dwDesiredSignatureSize,1);
     if (pbSign==NULL){
         free (pbHash);
         return NULL;
     }
+    //Copy sha256 to signature
     memcpy(pbSign+dwDesiredSignatureSize-SHA256_SIZE,pbHash,SHA256_SIZE);
     free(pbHash);
+    //Set 00 01 in the beginning
     *pbSign=0;
     *(pbSign+1)=1;
+    //Set 00 before the hash
     *(pbSign+dwDesiredSignatureSize-SHA256_SIZE-1)=0;
+    //Fill remaining space with FF
     memset(pbSign+2,'\xff',dwDesiredSignatureSize-SHA256_SIZE-3);
+    //Return the signature
     return pbSign;
 }
 /*
@@ -515,21 +528,28 @@ PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState,
     uint32_t dwPackedMatrixSize;
     uint32_t dwPacketSize;
     PPROOF_CONFIGURATION_PACKET pProofConfigurationPacket;
+    //Sanity check
     if (pZKnState==NULL ||pZKnState->pZKnGraph==NULL ||pZKnState->pZKnGraph->pbGraphData==NULL|| pdwPacketSize==NULL) return NULL;
+    //Pack graph matrix
     pbPackedMatrix=packMatrix(pZKnState->pZKnGraph->pbGraphData,pZKnState->pZKnGraph->wVerticeCount,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL) return NULL;
+    //Compute packet size
     dwPacketSize=PROOF_CONFIGURATON_PACKET_HEADER_SIZE + (uint32_t) dwPackedMatrixSize;
+    //Allocate memory for packet
     pProofConfigurationPacket=(PPROOF_CONFIGURATION_PACKET) malloc(dwPacketSize);
     if (pProofConfigurationPacket==NULL){
         free (pbPackedMatrix);
         return NULL;
     }
+    //Fill the check count, supported algorithms, packed matrix size and packed matrix in the packet
     pProofConfigurationPacket->bCheckCount=pZKnState->bCheckCount;
     pProofConfigurationPacket->supportedAlgorithms=pZKnState->supportedAlgorithms;
     pProofConfigurationPacket->dwPackedMatrixSize=(uint32_t)dwPackedMatrixSize;
     memcpy(pProofConfigurationPacket->bPackedMatrixData,pbPackedMatrix,(ssize_t)dwPackedMatrixSize);
     free(pbPackedMatrix);
+    //Send the size of the packet to the caller
     *pdwPacketSize=dwPacketSize;
+    //Return the packet
     return pProofConfigurationPacket;
 }
 
@@ -552,53 +572,65 @@ PPROOF_HELPER initializeProofHelper(PFULL_KNOWLEDGE pFullKnowledge, PPROOF_CONFI
     PPROOF_HELPER pProofHelper;
     uint8_t* pbUnpackedMatrix;
     uint16_t wDimension;
+    //Set default error reason
     *(pbErrorReason)=ERROR_REASON_NONE;
+    //Sanity check
     if (pFullKnowledge==NULL || pProofConfigurationPacket==NULL) {
         *(pbErrorReason)=ERROR_REASON_SYSTEM;
         return NULL;
     }
+    //Checking packet size (this is untrusted data, we need to be careful)
     if  (dwPacketSize<PROOF_CONFIGURATON_PACKET_HEADER_SIZE){
         *(pbErrorReason)=ERROR_REASON_WRONG_VALUE;
         return NULL;
     }
+    //Verify check count is within limits
     if (pProofConfigurationPacket->bCheckCount < MINIMUM_CHECK_COUNT || pProofConfigurationPacket->bCheckCount > MAXIMUM_CHECK_COUNT){
         *pbErrorReason=ERROR_REASON_WRONG_VALUE;
         return NULL;
     }
+    //Verify at least one of commitment algorithms is supported
     if (pProofConfigurationPacket->supportedAlgorithms.supportedAlgsCode==0){
         *pbErrorReason=ERROR_REASON_WRONG_VALUE;
         return NULL;
     }
+    //Check that packed matrix size is the same as packet size without the header
     if (pProofConfigurationPacket->dwPackedMatrixSize!=(dwPacketSize-PROOF_CONFIGURATON_PACKET_HEADER_SIZE) || pProofConfigurationPacket->dwPackedMatrixSize==0){
         *pbErrorReason=ERROR_REASON_CHEATING;
         return NULL;
     }
+    //Unpack matrix
     pbUnpackedMatrix=unpackMatrix(pProofConfigurationPacket->dwPackedMatrixSize, pProofConfigurationPacket->bPackedMatrixData,&wDimension);
     if (pbUnpackedMatrix==NULL) 
     {
         *(pbErrorReason)=ERROR_REASON_SYSTEM;
         return NULL;
     }
+    //Check that dimensions of the received matrix and the matrix that the prover created are the same
     if (wDimension!=pFullKnowledge->wDimension) {
         *(pbErrorReason)=ERROR_REASON_WRONG_VALUE;
         free(pbUnpackedMatrix);
         return NULL;
     }
+    //Check that Prover's graph matrix and Verifier's graph matrix are the same
     if (memcmp(pFullKnowledge->pbGraphMatrix,pbUnpackedMatrix,pFullKnowledge->dwMatrixArraySize)!=0){
         *(pbErrorReason)=ERROR_REASON_WRONG_VALUE;
         free(pbUnpackedMatrix);
         return NULL;
     }
+    //Allocate memory for PROOF_HELPER
     pProofHelper=(PPROOF_HELPER) malloc(sizeof(PROOF_HELPER));
     if (pProofHelper==NULL) {
         *(pbErrorReason)=ERROR_REASON_SYSTEM;
         free(pbUnpackedMatrix);
         return NULL;
     }
+    //Fill PROOF_HELPER with pointer to FULL_KNOWLEDGE, supported algorithms and check count
     pProofHelper->pFullKnowledge=pFullKnowledge;
     pProofHelper->supportedAlgorithms=pProofConfigurationPacket->supportedAlgorithms;
     pProofHelper->bCheckCount=pProofConfigurationPacket->bCheckCount;
     free(pbUnpackedMatrix);
+    //Return pointer to proof helper
     return pProofHelper;
 }
 /*
@@ -630,23 +662,25 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
     uint8_t* pbPermutedCycleMatrix;
     uint8_t* pbPackedMatrix;
     uint32_t dwPackedMatrixSize;
+    //Sanity check
     if (pProofHelper==NULL) return NULL;
+    //Allocate SINGLE_PROOF structure
     pSingleProof=(PSINGLE_PROOF) malloc(sizeof(SINGLE_PROOF));
     if (pSingleProof==NULL) return NULL;
+    //Generate permutation matrix
     pbPermutationMatrix=generatePermutationMatrix(pProofHelper->pFullKnowledge->wDimension);
     if (pbPermutationMatrix==NULL){
         free(pSingleProof);
         return NULL;
     }
-#ifdef ENABLE_FOR_TEST
-    printf("Started permutation\n");
-#endif
+    //Compute permuted graph matrix
     pbPermutedGraphMatrix=permuteMatrix(pbPermutationMatrix,pProofHelper->pFullKnowledge->pbGraphMatrix,pProofHelper->pFullKnowledge->wDimension);
     if (pbPermutedGraphMatrix==NULL){
         free(pSingleProof);
         free(pbPermutationMatrix);
         return NULL;
     } 
+    //Compute permuted cycle matrix
     pbPermutedCycleMatrix=permuteMatrix(pbPermutationMatrix,pProofHelper->pFullKnowledge->pbCycleMatrix,pProofHelper->pFullKnowledge->wDimension);
     if (pbPermutedCycleMatrix==NULL){
         free(pSingleProof);
@@ -654,10 +688,7 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         free(pbPermutedGraphMatrix);
         return NULL;
     }
-    
-#ifdef ENABLE_FOR_TEST
-    printf("Ended permutation\n");
-#endif
+    //Pack permutation matrix 
     pbPackedMatrix=packMatrix(pbPermutationMatrix,pProofHelper->pFullKnowledge->wDimension,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL){
         free(pSingleProof);
@@ -666,11 +697,13 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         free(pbPermutedGraphMatrix);
         return NULL;
     }
+    //Save packed matrix size and packed permutation matrix
     pSingleProof->dwPackedMatrixSize=dwPackedMatrixSize;
     pSingleProof->pbPackedPermutationMatrix=pbPackedMatrix;
     free(pbPermutationMatrix);
-    
+    //Pack permuted graph matrix
     pbPackedMatrix=packMatrix(pbPermutedGraphMatrix,pProofHelper->pFullKnowledge->wDimension,&dwPackedMatrixSize);
+    //The sizes of all packed matrixes should be the same
     if (pbPackedMatrix==NULL||dwPackedMatrixSize!=pSingleProof->dwPackedMatrixSize){
         free(pSingleProof->pbPackedPermutationMatrix);
         free(pSingleProof);
@@ -678,9 +711,10 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         free(pbPermutedGraphMatrix);
         return NULL;
     }
+    //Save packed permuted graph matrix
     pSingleProof->pbPackedPermutedGraphMatrix=pbPackedMatrix;
     free(pbPermutedGraphMatrix);
-    
+    //Pack permuted cycle matrix
     pbPackedMatrix=packMatrix(pbPermutedCycleMatrix,pProofHelper->pFullKnowledge->wDimension,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL||dwPackedMatrixSize!=pSingleProof->dwPackedMatrixSize){
         free(pSingleProof->pbPackedPermutationMatrix);
@@ -689,9 +723,10 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         free(pbPermutedCycleMatrix);
         return NULL;
     }
+    //Save packed permuted cycle matrix
     pSingleProof->pbPackedPermutedCycleMatrix=pbPackedMatrix;
     free(pbPermutedCycleMatrix);
-
+    //Return pointer to SINGLE_PROOF
     return pSingleProof;
 }
 
@@ -705,6 +740,7 @@ PSINGLE_PROOF createSingleProof(PPROOF_HELPER pProofHelper){
         N/A
 */
 void freeSingleProof(PSINGLE_PROOF pSingleProof){
+    //Sanity check
     if (pSingleProof==NULL) return;
     free(pSingleProof->pbPackedPermutationMatrix);
     free(pSingleProof->pbPackedPermutedCycleMatrix);
@@ -715,7 +751,7 @@ void freeSingleProof(PSINGLE_PROOF pSingleProof){
 /*
     PSINGLE_PROOF* createProofsForOneRound(PPROOF_HELPER pProofHelper)
     definition:
-        Create an array of single proofs enough for one round
+        Create an array of single proofs enough for one round. Repeatedly calls createSingleProof and adds them to an array
     arguments:
         pProofHelper - pointer to structure containing enough information to create proofs
     return value:
@@ -726,17 +762,18 @@ PSINGLE_PROOF* createProofsForOneRound(PPROOF_HELPER pProofHelper){
     PSINGLE_PROOF* pProofArray;
     PSINGLE_PROOF pSingleProof;
     uint8_t bIndex,bJndex;
+    //Sanity check
     if (pProofHelper==NULL) return NULL;
+    //Allocate array of pointers to proofs
     pProofArray=(PSINGLE_PROOF*)malloc(sizeof(SINGLE_PROOF)*(uint32_t)(pProofHelper->bCheckCount));
     if (pProofArray==NULL) return NULL;
+    //Create proofs one by one
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
-#ifdef ENABLE_FOR_TEST
-        printf("Currently creating proof %hhd\n",bIndex);
-#endif
         pSingleProof=createSingleProof(pProofHelper);
         if (pSingleProof==NULL) break;
         pProofArray[bIndex]=pSingleProof;
     }
+    //If for some reason we couldn't create enough proofs, free the ones we did create
     if (bIndex!=pProofHelper->bCheckCount){
         for (bJndex=0;bJndex<bIndex;bJndex=bJndex+1){
             freeSingleProof(pProofArray[bJndex]);
@@ -744,6 +781,7 @@ PSINGLE_PROOF* createProofsForOneRound(PPROOF_HELPER pProofHelper){
         free(pProofArray);
         return NULL;
     }
+    //Return array of proofs
     return pProofArray;
 }
 
@@ -760,17 +798,20 @@ PSINGLE_PROOF* createProofsForOneRound(PPROOF_HELPER pProofHelper){
 */
 void freeProofsForOneRound(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper){
     uint8_t bIndex;
+    //Sanity check
     if (pProofArray==NULL || pProofHelper==NULL) return;
+    //Free all SINGLE_PROOF structures one by one
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
         freeSingleProof(pProofArray[bIndex]);
     }
+    //Free the proof array
     free(pProofArray);
 }
 
 /*
     uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* pdwSingleCommitmentSize)
     description:
-        Create a single commitment with CRC32 hash
+        Create a single commitment with CRC32 hash (obviously not supposed to be computationally binding)
     arguments:
         pSingleProof - pointer to structure containing permutation, permuted graph and permuted cycle
         pdwSingleCommitmentSize - for informing the caller of resulting size
@@ -782,38 +823,49 @@ uint8_t* createSingleCRC32Commitment(PSINGLE_PROOF pSingleProof,  out uint32_t* 
     uint32_t dwSingleCommitmentSize;
     PCRC32_COMMITMENT pCRC32Commitment;
     uint8_t* pCRC32;
+    //Sanity check
+    if (pSingleProof==NULL || pdwSingleCommitmentSize==NULL) return NULL;
     dwSingleCommitmentSize=sizeof(CRC32_COMMITMENT);
+    //Allocate CRC32_COMMITMENT structure
     pCRC32Commitment=(PCRC32_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pCRC32Commitment==NULL) return NULL;
+    //Computed crc32 of packed permutation matrix
     pCRC32=crc32(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     if (pCRC32==NULL){
         free(pCRC32Commitment);
         return NULL;
     }
+    //Copy to the structure
     memcpy(pCRC32Commitment->permutationCRC32,pCRC32,CRC32_SIZE);
     free(pCRC32);
+    //Compute crc32 of packed permuted graph matrix
     pCRC32=crc32(pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     if (pCRC32==NULL){
         free(pCRC32Commitment);
         return NULL;
     }
+    //Copy to the structure
     memcpy(pCRC32Commitment->permutedGraphCRC32,pCRC32,CRC32_SIZE);
     free(pCRC32);
+    //Compute crc32 of packed permuted cycle matrix
     pCRC32=crc32(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     if (pCRC32==NULL){
         free(pCRC32Commitment);
         return NULL;
     }
+    //Copy to the structure
     memcpy(pCRC32Commitment->permutedCycleCRC32,pCRC32,CRC32_SIZE);
     free(pCRC32);
+    //Send commitment size to the caller
     *pdwSingleCommitmentSize=dwSingleCommitmentSize;
+    //Return commitment
     return (uint8_t*)pCRC32Commitment;
 }
 
 /*
     uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize)
     description:
-        Create multiple CRC32 commitments from proof array and put them into one blob
+        Create multiple CRC32 commitments from proof array and put them in one blob
     arguments:
         pProofArray - array of single prrofs
         pProofHelper - additional information for proods
@@ -828,20 +880,24 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     uint32_t dwSingleCommitmentSize;
     uint8_t* pSingleCommitment;
     uint8_t bIndex;
+    //No sanity check, it was done by the caller
+    //Create CRC32 commitments one by one for every SINGLE_PROOF in pProofArray
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
-#ifdef ENABLE_FOR_TEST
-        printf("Currently creating commitment %hhd\n",bIndex);
-#endif
         pSingleCommitment=createSingleCRC32Commitment(pProofArray[bIndex], &dwSingleCommitmentSize);
         if (pSingleCommitment==NULL){
             free(pCommitmentArray);
             return NULL;
         }
+        //Could be made faster, but this method is more generic and works for all types of commitments
+        //Reallocating the array holding commitments
         pCommitmentArray=realloc(pCommitmentArray,dwSingleCommitmentSize+dwCommitmentRoundDataSize);
+        //Copy commitment to the blob
         memcpy(pCommitmentArray+dwCommitmentRoundDataSize,pSingleCommitment,dwSingleCommitmentSize);
+        //Increase blob size
         dwCommitmentRoundDataSize=dwCommitmentRoundDataSize+dwSingleCommitmentSize;
         free(pSingleCommitment);
     }
+    //Send resulting data size to the caller
     *pdwCommitmentDataSize=dwCommitmentRoundDataSize;
     return pCommitmentArray;
 }
@@ -861,38 +917,50 @@ uint8_t* createCRC32CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pP
     uint32_t dwSingleCommitmentSize;
     PSHA256_COMMITMENT pSHA256Commitment;
     uint8_t* pSHA256;
+    //Sanity check
+    if (pSingleProof==NULL || pdwSingleCommitmentSize==NULL) return NULL;
     dwSingleCommitmentSize=sizeof(SHA256_COMMITMENT);
+    //Allocate structure
     pSHA256Commitment=(PSHA256_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pSHA256Commitment==NULL) return NULL;
+    //Compute packed permutation matrix sha256
     pSHA256=sha256(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize);
     if (pSHA256==NULL){
         free(pSHA256Commitment);
         return NULL;
     }
+    //Copy to structure
     memcpy(pSHA256Commitment->permutationSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
+    //Compute packed graph matrix sha256
     pSHA256=sha256(pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
     if (pSHA256==NULL){
         free(pSHA256Commitment);
         return NULL;
     }
+    //Copy to structure
     memcpy(pSHA256Commitment->permutedGraphSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
+    //Compute packed cycle matrix sha256
     pSHA256=sha256(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize);
     if (pSHA256==NULL){
         free(pSHA256Commitment);
         return NULL;
     }
+    //Copy to structure
     memcpy(pSHA256Commitment->permutedCycleSHA256,pSHA256,SHA256_SIZE);
     free(pSHA256);
+    //Send commitment size to the caller
     *pdwSingleCommitmentSize=dwSingleCommitmentSize;
+    //Return commitment
     return (uint8_t*)pSHA256Commitment;
 }
 
 /*
     uint8_t* createSHA256CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize)
     description:
-        Create multiple SHA256 commitments from proof array and put them into one blob
+        Create multiple SHA256 commitments from proof array and put them into one blob.
+         (Calls createSingleSHA256Commitment repeatedly and puts results into one blob)
     arguments:
         pProofArray - array of single prrofs
         pProofHelper - additional information for proods
@@ -907,17 +975,23 @@ uint8_t* createSHA256CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER p
     uint32_t dwSingleCommitmentSize;
     uint8_t* pSingleCommitment;
     uint8_t bIndex;
+    //Sanity check were performed by the caller
+    //Create single commitments one by one and append to the blob
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
         pSingleCommitment=createSingleSHA256Commitment(pProofArray[bIndex], &dwSingleCommitmentSize);
         if (pSingleCommitment==NULL){
             free(pCommitmentArray);
             return NULL;
         }
+        //Reallocate blob to fit in one more commitment
         pCommitmentArray=realloc(pCommitmentArray,dwSingleCommitmentSize+dwCommitmentRoundDataSize);
+        //Copy a single commitment to the blob
         memcpy(pCommitmentArray+dwCommitmentRoundDataSize,pSingleCommitment,dwSingleCommitmentSize);
+        //Update blob size
         dwCommitmentRoundDataSize=dwCommitmentRoundDataSize+dwSingleCommitmentSize;
         free(pSingleCommitment);
     }
+    //Return blob size and blob
     *pdwCommitmentDataSize=dwCommitmentRoundDataSize;
     return pCommitmentArray;
 }
@@ -926,7 +1000,8 @@ uint8_t* createSHA256CommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER p
     PAES_COMMITMENT createSingleAESCommitment(PSINGLE_PROOF pSingleProof, out uint32_t* pdwCommitmentSize, \
         out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformation)
     description:
-        Create a single AES commitment
+        Create a single AES commitment. Packed permuted graph matrix is sent in plaintext, while packed permutation
+         and cycle matrices are packed and encrypted with different keys.
     arguments:
         pSingleProof - pointer to permutation / permuted graph / permuted cycle data
         pdwCommitmentSize - for outputing size of output data
@@ -946,19 +1021,24 @@ out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformat
     uint32_t dwSingleCommitmentSize;
     unsigned char IV1[AES_IV_SIZE];
     unsigned char IV2[AES_IV_SIZE];
+    //sanity check
     if (pSingleProof==NULL || ppSingleAesCommitmentExtraInformation==NULL) return NULL;
+    //Allocating structure
     pExtraInformation=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)malloc(sizeof(SINGLE_AES_COMMITMENT_EXTRA_INFORMATION));
     if (pExtraInformation==NULL) return NULL;
+    //Generate initialization vectors and keys for permutation and permuted cycle encryption
     getRandomBytes(IV1,AES_IV_SIZE);
     getRandomBytes(IV2,AES_IV_SIZE);
     getRandomBytes(pExtraInformation->permutationKey,AES128_KEY_SIZE);
     getRandomBytes(pExtraInformation->permutedCycleKey,AES128_KEY_SIZE);
+    //Encrypt packed permutation matrix with AES in CBC Mode
     pbEncryptedPermutationData=aes128cbc_encrypt(pSingleProof->pbPackedPermutationMatrix,pSingleProof->dwPackedMatrixSize, \
         pExtraInformation->permutationKey,IV1,&dwEncryptedPermutationDataSize);
     if (pbEncryptedPermutationData==NULL){
         free(pExtraInformation);
         return NULL;
     }
+    //Encrypt packed permuted cycle matrix with AES in CBC Mode
     pbEncryptedCycleData=aes128cbc_encrypt(pSingleProof->pbPackedPermutedCycleMatrix,pSingleProof->dwPackedMatrixSize, \
         pExtraInformation->permutedCycleKey,IV2,&dwEncryptedCycleDataSize);
     if (pbEncryptedPermutationData==NULL || dwEncryptedCycleDataSize!=dwEncryptedPermutationDataSize){
@@ -967,7 +1047,9 @@ out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformat
         free(pExtraInformation);
         return NULL;
     }
+    //Compute commitment size
     dwSingleCommitmentSize=AES_COMMITMENT_HEADER_SIZE+2*dwEncryptedPermutationDataSize+pSingleProof->dwPackedMatrixSize;
+    //Allocate structure
     pAESCommitment=(PAES_COMMITMENT)malloc(dwSingleCommitmentSize);
     if (pAESCommitment==NULL){
         free(pbEncryptedCycleData);
@@ -975,15 +1057,20 @@ out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformat
         free(pExtraInformation);
         return NULL;
     }
+    //Save packed matrix size and packed and encrypted matrix size to the structure
     pAESCommitment->dwPackedPermutedMatrixSize=pSingleProof->dwPackedMatrixSize;
     pAESCommitment->dwSingleCiphertextPlusIVSize=dwEncryptedCycleDataSize;
+    //The data is located in this way: ( Packed and Encrypted Permutation Matrix | Packed and Encrypted Cycle Matrix | Packed Permuted Graph Matrix )
+    //Copy the encrypted/packed matrices to the structure 
     memcpy(pAESCommitment->commitmentData,pbEncryptedPermutationData,dwEncryptedPermutationDataSize);
     memcpy(pAESCommitment->commitmentData+dwEncryptedPermutationDataSize,pbEncryptedCycleData,dwEncryptedCycleDataSize);
     memcpy(pAESCommitment->commitmentData+dwEncryptedPermutationDataSize+dwEncryptedCycleDataSize,pSingleProof->pbPackedPermutedGraphMatrix,pSingleProof->dwPackedMatrixSize);
-    *pdwCommitmentSize=dwSingleCommitmentSize;
-    *ppSingleAesCommitmentExtraInformation=pExtraInformation;
+    //Free everything we don't need any more
     free(pbEncryptedCycleData);
     free(pbEncryptedPermutationData);
+    //Return commitment size, aes keys and commitment itself 
+    *pdwCommitmentSize=dwSingleCommitmentSize;
+    *ppSingleAesCommitmentExtraInformation=pExtraInformation;
     return pAESCommitment; 
 }
 
@@ -991,7 +1078,7 @@ out PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* ppSingleAesCommitmentExtraInformat
     uint8_t* createAESCommitmentRound(PSINGLE_PROOF* pProofArray, PPROOF_HELPER pProofHelper, out uint32_t* pdwCommitmentDataSize, \
         out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation)
     description:
-        Create a full round worth of AES commitments
+        Create a full round worth of AES commitments. (Create single AES commitments and put them into one blob)
     arguments:
         pProofArray - array with proofs for each commitment
         pProofHelper - additional information for proofs
@@ -1010,20 +1097,27 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
     uint8_t* pbCommitmentRoundData=NULL;
     uint8_t* pbCurrentCommitment;
     uint8_t bIndex,bJndex;
+    //Sanity checks performed by the called
+    //Allocate array of pointers to SINGLE_AES_COMMITMENT_EXTRA_INFORMATION (for AES keys)
     pAESExtraInformationArray=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION*)malloc(sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount);
     if (pAESExtraInformationArray==NULL) return NULL;
+    //Allocate COMMITMENT_EXTRA_INFORMATION structure (for saving AES keys)
     pCommitmentExtraInformation=(PCOMMITMENT_EXTRA_INFORMATION)malloc(sizeof(COMMITMENT_EXTRA_INFORMATION));
-    
+    //Return pointer to COMMITMENT_EXTRA_INFORMATION to the callser
     *ppCommitmentExtraInformation=pCommitmentExtraInformation;
     if (pCommitmentExtraInformation==NULL){
         free(pAESExtraInformationArray);
         return NULL;
     }
+    //Fill the fields of COMMITMENT_EXTRA_INFORMATION with array pointer and array size
     pCommitmentExtraInformation->dwDataSize=sizeof(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION)*(uint32_t)pProofHelper->bCheckCount;
     pCommitmentExtraInformation->pbData=(uint8_t*)pAESExtraInformationArray;
+    //Create single commitments one by one
     for(bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
+        //Create SINGLE_AES_COMMITMENT, pointer to AES keys is automatically written to the array
         pbCurrentCommitment=(uint8_t*)createSingleAESCommitment(pProofArray[bIndex],&dwCurrentCommitmentSize,&pAESExtraInformationArray[bIndex]);
         if (pbCurrentCommitment==NULL){
+            //If something goes wrong we need to free all allocated buffers
             for (bJndex=0;bJndex<bIndex;bJndex=bJndex+1){
                 free(pAESExtraInformationArray[bJndex]);
             }
@@ -1031,18 +1125,24 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
             free(pbCommitmentRoundData);
             return NULL;
         }
-       pbCommitmentRoundData=realloc(pbCommitmentRoundData,dwTotalCommitmentDataSize+dwCurrentCommitmentSize);
-       if (pbCommitmentRoundData==NULL){
+        //Reallocate the commitment array to append the commitment
+        pbCommitmentRoundData=realloc(pbCommitmentRoundData,dwTotalCommitmentDataSize+dwCurrentCommitmentSize);
+        //Something goes wrong - free everything
+        if (pbCommitmentRoundData==NULL){
             for (bJndex=0;bJndex<bIndex;bJndex=bJndex+1){
                 free(pAESExtraInformationArray[bJndex]);
             }
             free(pAESExtraInformationArray);
             return NULL;
        } 
+       //Copy commitment to blob
        memcpy(pbCommitmentRoundData+dwTotalCommitmentDataSize,pbCurrentCommitment,dwCurrentCommitmentSize);
+       //Free commitment buffer
        free(pbCurrentCommitment);
+       //Update total blob size
        dwTotalCommitmentDataSize=dwTotalCommitmentDataSize+dwCurrentCommitmentSize;
     }
+    //Return blob size and pointer to blob
    *pdwCommitmentDataSize=dwTotalCommitmentDataSize;
    return pbCommitmentRoundData; 
 }
@@ -1053,18 +1153,21 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
     description:
         Free commitment extra information structure and its members
     arguments:
+        pProofHelper - pointer to PROOF_HELPER, we only actually need check count
         pCommitmentExtraInformation - pointer to COMMITMENT_EXTRA_INFORMATION to free
     return value:
         N/A
 */
 void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper,PCOMMITMENT_EXTRA_INFORMATION pCommitmentExtraInformation){
-    if (pCommitmentExtraInformation==NULL) return;
+    if (pProofHelper==NULL || pCommitmentExtraInformation==NULL) return;
     uint8_t bIndex;
     PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION* pArray;
     pArray=(PSINGLE_AES_COMMITMENT_EXTRA_INFORMATION*)pCommitmentExtraInformation->pbData;
+    //Free all SINGLE_AES_COMMITMENT_EXTRA_INFORMATION pointers one by one
     for (bIndex=0;bIndex<pProofHelper->bCheckCount;bIndex=bIndex+1){
        free(pArray[bIndex]); 
     }
+    //Free array and holding structure
     free(pCommitmentExtraInformation->pbData);
     free(pCommitmentExtraInformation);
 }
@@ -1073,7 +1176,7 @@ void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper,PCOMMITMENT_EXTRA
     PCOMMITMENT_PACKET createCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper,out uint32_t* pdwCommitmentPacketSize, \
         out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation)
     description:
-        Create Full Round commitment packet
+        Create a FULL Round commitment packet that will hold CRC32, SHA256 or AES commitments
     arguments:
         pProofArray - array of pointers to single proofs
         pProofHelper - all additional information
@@ -1085,24 +1188,30 @@ void freeCommitmentExtraInformation(PPROOF_HELPER pProofHelper,PCOMMITMENT_EXTRA
 */
 PCOMMITMENT_PACKET createCommitmentPacket(PSINGLE_PROOF* pProofArray,PPROOF_HELPER pProofHelper,out uint32_t* pdwCommitmentPacketSize, \
 out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
-    //PCOMMITMENT_PACKET pCommitmentPacket;
     COMMITMENT_ALGORITHMS commitmentAlgs;
     PCOMMITMENT_PACKET pCommitmentPacket;
     uint32_t dwCommitmentDataSize;
     uint32_t dwResultingPacketSize;
     uint8_t* pbCommitmentData;
-    if (pProofArray==NULL || pProofHelper==NULL || ppCommitmentExtraInformation==NULL) return NULL;
+    //Sanity check
+    if (pProofArray==NULL || pProofHelper==NULL || pdwCommitmentPacketSize==NULL || ppCommitmentExtraInformation==NULL) return NULL;
+    //In 2 out of 3 cases we don't need extra information, so we immediately set it to NULL just in case
     *ppCommitmentExtraInformation=NULL;
     commitmentAlgs=pProofHelper->supportedAlgorithms;
+    //First check if CRC32 commitment is supported (we use the worst possible scenario)
     if(commitmentAlgs.isCRC32Supported){
+        //If CRC32 commitment is supported, create CRC32 commitment
         pbCommitmentData=createCRC32CommitmentRound(pProofArray,pProofHelper,&dwCommitmentDataSize);
         if (pbCommitmentData==NULL) return NULL;
+        //Compute resulting packet size and allocate the structure
         dwResultingPacketSize=dwCommitmentDataSize+COMMITMENT_PACKET_HEADER_SIZE;
         pCommitmentPacket=(PCOMMITMENT_PACKET)malloc(dwResultingPacketSize);
         if (pCommitmentPacket==NULL){
             free(pbCommitmentData);
             return NULL;
         }
+        //Fill the fields of commitment packet with chosen commitment algorithm, number of checks,
+        // commitment data size and actual commitmenty data
         pCommitmentPacket->bCommitmentCount=pProofHelper->bCheckCount;
         commitmentAlgs.supportedAlgsCode=0;
         commitmentAlgs.isCRC32Supported=1;
@@ -1110,18 +1219,24 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
         pCommitmentPacket->dwDataSize=dwCommitmentDataSize;
         memcpy(pCommitmentPacket->commitmentData,pbCommitmentData,dwCommitmentDataSize);
         free(pbCommitmentData);
+        //Return packet size and pointer to packet
         *pdwCommitmentPacketSize=dwResultingPacketSize;
         return pCommitmentPacket;
     }else{
+        //If not CRC32, check if SHA256 is supported
         if (commitmentAlgs.isSHA256Supported){
+            //Create SHA256 commitment
             pbCommitmentData=createSHA256CommitmentRound(pProofArray,pProofHelper,&dwCommitmentDataSize);
             if (pbCommitmentData==NULL) return NULL;
+            //Calculate resulting packet size and allocate structure
             dwResultingPacketSize=dwCommitmentDataSize+COMMITMENT_PACKET_HEADER_SIZE;
             pCommitmentPacket=(PCOMMITMENT_PACKET)malloc(dwResultingPacketSize);
             if (pCommitmentPacket==NULL){
                 free(pbCommitmentData);
                 return NULL;
             }
+            //Fill the fields of commitment packet with chosen commitment algorithm, number of checks,
+            // commitment data size and actual commitmenty data
             pCommitmentPacket->bCommitmentCount=pProofHelper->bCheckCount;
             commitmentAlgs.supportedAlgsCode=0;
             commitmentAlgs.isSHA256Supported=1;
@@ -1129,13 +1244,17 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
             pCommitmentPacket->dwDataSize=dwCommitmentDataSize;
             memcpy(pCommitmentPacket->commitmentData,pbCommitmentData,dwCommitmentDataSize);
             free(pbCommitmentData);
+            //Return packet size and data
             *pdwCommitmentPacketSize=dwResultingPacketSize;
             return pCommitmentPacket;    
         }
         else{
+            //If not SHA256 either, then check if AES
             if (commitmentAlgs.isAESSupported){
+                //Create AES commitment
                 pbCommitmentData=createAESCommitmentRound(pProofArray,pProofHelper,&dwCommitmentDataSize,ppCommitmentExtraInformation);
                 if (pbCommitmentData==NULL) return NULL;
+                //Calculate resulting packet size and allocate structure
                 dwResultingPacketSize=dwCommitmentDataSize+COMMITMENT_PACKET_HEADER_SIZE;
                 pCommitmentPacket=(PCOMMITMENT_PACKET)malloc(dwResultingPacketSize);
                 if (pCommitmentPacket==NULL){
@@ -1144,6 +1263,8 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
                     *ppCommitmentExtraInformation=NULL;
                     return NULL;
                 }
+                //Fill the fields of commitment packet with chosen commitment algorithm, number of checks,
+                // commitment data size and actual commitmenty data
                 pCommitmentPacket->bCommitmentCount=pProofHelper->bCheckCount;
                 commitmentAlgs.supportedAlgsCode=0;
                 commitmentAlgs.isAESSupported=1;
@@ -1151,9 +1272,11 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
                 pCommitmentPacket->dwDataSize=dwCommitmentDataSize;
                 memcpy(pCommitmentPacket->commitmentData,pbCommitmentData,dwCommitmentDataSize);
                 free(pbCommitmentData);
+                //Return packet size and pointer to packet
                 *pdwCommitmentPacketSize=dwResultingPacketSize;
                 return pCommitmentPacket;
             }else{
+                //No other commitment algorithms, so return NULL
                 return NULL;
             }
         }
@@ -1163,7 +1286,8 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
 /*
     uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolState,uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize)
     description:
-        Save commitment for the proof (copy data)
+        Save commitment for the proof (copy data). We are only checking the size of the commitment packet at this stage.
+        Nothing more. 
     arguments:
         pZKnState - pointer to structure holding general configuration
         pZKnProtocolState - pointer to protocol state structure
@@ -1175,26 +1299,34 @@ out PCOMMITMENT_EXTRA_INFORMATION* ppCommitmentExtraInformation){
                 ERROR_BAD_VALUE if simulation is disabled and commitment has already been saved        
 */
 uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolState,uint8_t* pbCommitmentData, uint32_t dwCommitmentDataSize){
+    //Sanity check
     if (pZKnState==NULL || pZKnProtocolState==NULL || pbCommitmentData==NULL) return ERROR_SYSTEM;
+    //Check that commitment data is at least as big as its header size
     if (dwCommitmentDataSize<COMMITMENT_PACKET_HEADER_SIZE) return ERROR_BAD_VALUE;
+    //If simulation mode is disabled and we try to apply commitment several times during one iteration of the protocol,
+    // then don't save commitment data. If simulation mode is enabled, then commitment is updated
     if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete ){
         if ((pZKnState->simulationDisabled)!=0){
             return ERROR_BAD_VALUE;
         }
+        //If we already have commitment data, free it
         free(pZKnProtocolState->pbCommitmentData);
     }
+    //Allocate buffer for commitment data
     pZKnProtocolState->pbCommitmentData=(uint8_t*)malloc(dwCommitmentDataSize);
     if (pZKnProtocolState->pbCommitmentData==NULL) return ERROR_SYSTEM;
+    //Copy commitment data, fill out data size in protocol state and mark commitment stage as complete
     memcpy(pZKnProtocolState->pbCommitmentData,pbCommitmentData,dwCommitmentDataSize);
     pZKnProtocolState->dwCommitmentDataSize=dwCommitmentDataSize;
     pZKnProtocolState->protocolProgress.isCommitmentStageComplete=1;
+    //Return success
     return SUCCESS;
 }
 
 /*
     PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, out uint32_t* pdwPacketSize)
     description:
-        Generate challenge (random bits) to send to the prover
+        Generate challenge (random bits) to send to the Prover
     arguments:
         pZKnState - pointer to structure holding general configuration
         pZKnProtocolState - pointer to protocol state structure
@@ -1204,20 +1336,27 @@ uint8_t saveCommitment(PZKN_STATE pZKnState,PZKN_PROTOCOL_STATE pZKnProtocolStat
         FAIL - NULL
 */
 PCHALLENGE_PACKET createChallenge(PZKN_STATE pZKnState, PZKN_PROTOCOL_STATE pZKnProtocolState, out uint32_t* pdwPacketSize){
-    uint64_t dwRandom;
+    uint64_t qwRandom;
     uint8_t bBitLength;
     PCHALLENGE_PACKET pChallengePacket;
-    if (pZKnState==NULL || pZKnProtocolState==NULL) return NULL;
+    //Sanity check
+    if (pZKnState==NULL || pZKnProtocolState==NULL || pdwPacketSize==NULL) return NULL;
+    //If commitment stage is not yet complete, there is no point in creating a challenge
     if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete!=1) return NULL;
+    //Allocate structure
     pChallengePacket=(PCHALLENGE_PACKET)calloc(1,sizeof(CHALLENGE_PACKET));
     if (pChallengePacket==NULL) return NULL;
-    dwRandom=generateRandomUpTo64Bits(pZKnProtocolState->pLegendrePRNG,pZKnState->bCheckCount);
+    //Generate pZKnState->bCheckCount random bits on our insecure PRNG
+    qwRandom=generateRandomUpTo64Bits(pZKnProtocolState->pLegendrePRNG,pZKnState->bCheckCount);
+    //Fill the bit length and random fields in the packet 
     bBitLength=pZKnState->bCheckCount;
-    pZKnProtocolState->qwRandom=dwRandom;
-    pChallengePacket->qwRandom=dwRandom;
+    pZKnProtocolState->qwRandom=qwRandom;
+    pChallengePacket->qwRandom=qwRandom;
     pChallengePacket->bBitCount=bBitLength;
+    //Mark challenge creation stage as complete
+    pZKnProtocolState->protocolProgress.isChallengeCreationStageComplete=1;
+    //Return packet size and pointer to the packet
     *pdwPacketSize=sizeof(CHALLENGE_PACKET);
-    pZKnProtocolState->protocolProgress.isRandomnessStageComplete=1;
     return pChallengePacket;
 }
 
@@ -1960,7 +2099,7 @@ uint32_t dwRevealPacketSize, uint8_t** ppbFlag,uint8_t* pbErrorReason){
         goto protocol_reset;
     }
     //Checking that the protocol is at the right stage
-    if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete==0 || pZKnProtocolState->protocolProgress.isRandomnessStageComplete==0){
+    if (pZKnProtocolState->protocolProgress.isCommitmentStageComplete==0 || pZKnProtocolState->protocolProgress.isChallengeCreationStageComplete==0){
         *pbErrorReason=ERROR_REASON_TOO_EARLY;
         bResult= ERROR_BAD_VALUE;
         goto protocol_reset;
