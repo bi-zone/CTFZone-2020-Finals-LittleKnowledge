@@ -42,7 +42,7 @@ typedef struct __ZKN_STATE{
 typedef union{
   struct{
     uint8_t isCommitmentStageComplete:1;
-    uint8_t isRandomnessStageComplete:1;
+    uint8_t isChallengeCreationStageComplete:1;
     uint8_t isProofStageComplete:1;
   };
   uint8_t status;
@@ -189,7 +189,7 @@ DLL_PUBLIC uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbIn
 DLL_PUBLIC PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize);
 DLL_PUBLIC uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint32_t dwDesiredSignatureSize);
 DLL_PUBLIC uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR);
-DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(int16_t wVerticeCount);
+DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVerticeCount);
 DLL_PUBLIC void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge);
 DLL_PUBLIC uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out uint32_t* pdwDataSize);
 DLL_PUBLIC PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, uint32_t dwPackedFullKnowledgeSize);
