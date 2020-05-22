@@ -1,10 +1,10 @@
-# Cryptographic Task for CTFZone Finals 2019 (held in 2020)
+# Cryptographic Task for CTFZone 2020 Finals
 
-This repository contains the code of the cryptographic task "LittleKnowledge", that we created for the CTFZone 2019 Finals (although they were held in April 2020).
+This repository contains the code of the cryptographic task "LittleKnowledge", that we created for the CTFZone 2020 Finals.
 We now publish this code for the community to use for new tasks, educational purposes, etc. If you have any questions you can contact one of the authors:
 + Alina Garbuz (a.garbuz@bi.zone)
 + Igor Motroni (i.motroni@bi.zone)
-+ Innokentii Sennovskii (i.sennovskiy@bi.zone)
++ Innokentii Sennovskii (i.sennovskiy@bi.zone, isennovskiy@gmail.com)
 
 ## Files and folders
 + zknlib/ - contains C library that provides core functionality
@@ -24,6 +24,10 @@ You can choose to build team server through docker or on host.
 To build locally:
 ```bash
 cd zknlib && make clean && make libzkn && cp obj/libzkn.so ../ && cd ../
+```
+Install requirements:
+```bash
+python3 -m pip install -r requirements.txt --user
 ```
 Then you can start the server:
 ```bash
