@@ -1,6 +1,0 @@
-[submodule "zknlib/prng"]
-	path = zknlib/prng
-	url = https://gitlab.pt.bi.zone/ctf/ctfzone-2020-finals/crypto/prng
-[submodule "zknlib/matrices"]
-	path = zknlib/matrices
-	url = https://gitlab.pt.bi.zone/ctf/ctfzone-2020-finals/crypto/matrices
