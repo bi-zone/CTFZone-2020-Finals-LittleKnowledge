@@ -1,4 +1,4 @@
-# Cryptographic Task for CTFZone Finals 2019
+# Cryptographic Task for CTFZone Finals 2019 (held in 2020)
 
 This repository contains the code of the cryptographic task "LittleKnowledge", that we created for the CTFZone 2019 Finals (although they were held in April 2020).
 We now publish this code for the community to use for new tasks, educational purposes, etc. If you have any questions you can contact one of the authors:
