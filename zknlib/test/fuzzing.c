@@ -1,3 +1,10 @@
+/*
+libzkn - fuzzing harnesses.
+Specific harnesses are enabled through macros.
+./test/corpus_collection contains minimized corpus for each case.
+Authors:
+    Innokentii Sennovskii (i.sennovskiy@bi.zone)
+*/
 #define _GNU_SOURCE 
 #include "../include/zkn.h"
 #include <stdio.h>

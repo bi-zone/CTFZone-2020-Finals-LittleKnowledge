@@ -1,7 +1,8 @@
 /*
-zkn.c - Main code file containing Zero-Knowledge functionality and exported functions
+libzkn - Main code file containing Zero-Knowledge functionality and exported functions
 
-The macro SAFE_VERSION is never used and represents the changes you would need to make, to fix the intended bugs
+The macro SAFE_VERSION is never used and represents the changes you would need to make, to fix the intended bugs.
+It is used once, but there are obviously more intended bugs.
 Authors:
     Innokentii Sennovskii (i.sennovskiy@bi.zone)
 */
@@ -27,7 +28,7 @@ Authors:
 #define ERROR_REASON_TOO_EARLY 3
 #define ERROR_REASON_CHEATING 4
 /*
-    PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
+    PZKN_STATE initializeZKnState(uint16_t wVertexCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
     description:
         This function intializes permanent Zero-Knowledge information (mostly configuration) for storage by the Verifier.
         The information stored includes:
@@ -35,18 +36,18 @@ Authors:
             The number of checks during each parallel interaction
             Supported commitment algorithms
     arguments:
-        wVerticeCount - desired adjacency matrix dimension (Graph vertice count)
+        wVertexCount - desired adjacency matrix dimension (Graph vertex count)
         bCheckCount - the number of checks done in parallel
         bSupportedAlgorithms - the choice of commitment algorithms
     return value:
         SUCCESS - pointer to the state structure
         ERROR - NULL
 */
-PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
+PZKN_STATE initializeZKnState(uint16_t wVertexCount, uint8_t bCheckCount, uint8_t bSuppportedAlgorithms)
 {
     PZKN_STATE pZKnState;
-    //First we check that wVerticeCount and bCheckCount fit the chosen scope 
-    if ((wVerticeCount>MAX_MATRIX_DIMENSION)|| (wVerticeCount<MIN_MATRIX_DIMENSION)) return NULL;
+    //First we check that wVertexCount and bCheckCount fit the chosen scope 
+    if ((wVertexCount>MAX_MATRIX_DIMENSION)|| (wVertexCount<MIN_MATRIX_DIMENSION)) return NULL;
     if (bCheckCount<MINIMUM_CHECK_COUNT || bCheckCount>MAXIMUM_CHECK_COUNT) return NULL;
     //bSupportedAlgorithms is bit-mask of three bits and at least one of them needs to be set.
     if (bSuppportedAlgorithms<1 || bSuppportedAlgorithms>7) return NULL;
@@ -54,7 +55,7 @@ PZKN_STATE initializeZKnState(uint16_t wVerticeCount, uint8_t bCheckCount, uint8
     pZKnState=(PZKN_STATE)malloc(sizeof(ZKN_STATE));
     if (pZKnState==NULL) return NULL;
     //Saving initial settings
-    pZKnState->wDefaultVerticeCount=wVerticeCount;
+    pZKnState->wDefaultVertexCount=wVertexCount;
     pZKnState->bCheckCount=bCheckCount;
     pZKnState->supportedAlgorithms.supportedAlgsCode=bSuppportedAlgorithms;
     //The flag and graph are to be initialized later by the checker
@@ -92,8 +93,8 @@ void destroyZKnState(PZKN_STATE pZKnState)
     uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState)
     description:
         This function is used at the beginning of Checker - Verifier interaction,
-        when the checker wants to set the Zero-Knowledge graph. Since the Prover chooses vertice count,
-        we need to creat a packet, that transmits the desired vertice count. We also include a random 16-byte
+        when the checker wants to set the Zero-Knowledge graph. Since the Prover chooses vertex count,
+        we need to creat a packet, that transmits the desired vertex count. We also include a random 16-byte
         value in the packet to protect against reuse attacks.
     arguments:
         pZKnState - initialized Zero-Knowledge state
@@ -127,8 +128,8 @@ uint8_t * createInitialSettingPacket(PZKN_STATE pZKnState){
         totalBytesRead+=bytesRead;
     }
     close(fd);
-    //Add desired vertice count
-    pInitialSettingPacket->wVerticeCount=pZKnState->wDefaultVerticeCount;
+    //Add desired vertex count
+    pInitialSettingPacket->wVertexCount=pZKnState->wDefaultVertexCount;
     return (uint8_t *) pInitialSettingPacket;
 }
 
@@ -239,7 +240,7 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
     pbUnpackedMatrix=unpackMatrix(pGraphSetPacket->dwPackedMatrixSize,pGraphSetPacket->bPackedMatrixData,&wMatrixDimension);
     if (pbUnpackedMatrix==NULL) return ERROR_BAD_VALUE;
     //Make sure the dimension of the matrix is the same as we requested in initial settings packet
-    if (wMatrixDimension!=pZKNState->wDefaultVerticeCount) {
+    if (wMatrixDimension!=pZKNState->wDefaultVertexCount) {
         free(pbUnpackedMatrix);
         return ERROR_BAD_VALUE;
     }
@@ -268,7 +269,7 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
     pZKNState->pZKnGraph=(PGRAPH)pbPlaceHolder;
     memcpy(pZKNState->pbFLAG,pGraphSetPacket->FLAG,FLAG_ARRAY_SIZE);
     pZKNGraph=pZKNState->pZKnGraph;
-    pZKNGraph->wVerticeCount=wMatrixDimension;
+    pZKNGraph->wVertexCount=wMatrixDimension;
     pZKNGraph->dwMatrixSize=dwUnpackedMatrixSize;
     pZKNGraph->pbGraphData=pbUnpackedMatrix;
     return SUCCESS;
@@ -276,20 +277,20 @@ uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, 
 
 
 /*
-    PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVerticeCount)
+    PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVertexCount)
     description:
         Create a graph with a hamiltonian cycle and the cycle given the number of vertices,
          save them both to a FULL_KNOWLEDGE structure and return the pointer
     arguments:
-        wVerticeCount - number of vertices in graph
+        wVertexCount - number of vertices in graph
     return value:
         SUCCESS - pointer to FULL_KNOWLEDGE structure
         ERROR - NULL
 
 */
-PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVerticeCount){
+PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVertexCount){
     //We just proxy it to matrices/matr.c, which holds all the matrix logic
-    return generateGraphAndCycleMatrix(wVerticeCount);
+    return generateGraphAndCycleMatrix(wVertexCount);
 };
 
 /*    
@@ -414,12 +415,12 @@ PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, u
 /*
     uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize)
     description:
-        Get vertice count from inital setting packet
+        Get vertex count from inital setting packet
     arguments:
         pbInitialSettingPacket - pointer to memory containing the initial setting packet
         dwPacketSize - size of the array
     return value:
-        SUCCESS - vertice count
+        SUCCESS - vertex count
         ERROR - 0
 */
 uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettingPacket, uint32_t dwPacketSize){
@@ -427,8 +428,8 @@ uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbInitialSettin
     //Check that packet is big enough
     if (dwPacketSize<sizeof(INITIAL_SETTING_PACKET)||pbInitialSettingPacket==NULL) return 0;
     pInitialSettingPacket=(PINITIAL_SETTING_PACKET)pbInitialSettingPacket;
-    //Return vertice count
-    return pInitialSettingPacket->wVerticeCount;
+    //Return vertex count
+    return pInitialSettingPacket->wVertexCount;
 }
 /*
     PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize)
@@ -531,7 +532,7 @@ PPROOF_CONFIGURATION_PACKET createProofConfigurationPacket(PZKN_STATE pZKnState,
     //Sanity check
     if (pZKnState==NULL ||pZKnState->pZKnGraph==NULL ||pZKnState->pZKnGraph->pbGraphData==NULL|| pdwPacketSize==NULL) return NULL;
     //Pack graph matrix
-    pbPackedMatrix=packMatrix(pZKnState->pZKnGraph->pbGraphData,pZKnState->pZKnGraph->wVerticeCount,&dwPackedMatrixSize);
+    pbPackedMatrix=packMatrix(pZKnState->pZKnGraph->pbGraphData,pZKnState->pZKnGraph->wVertexCount,&dwPackedMatrixSize);
     if (pbPackedMatrix==NULL) return NULL;
     //Compute packet size
     dwPacketSize=PROOF_CONFIGURATON_PACKET_HEADER_SIZE + (uint32_t) dwPackedMatrixSize;
@@ -1808,7 +1809,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             return ERROR_SYSTEM;
         }
         //Checking dimensions are the same everywhere
-        if (wCheckDimension!=pZKnState->pZKnGraph->wVerticeCount || wCheckDimension!=wPermutedGraphDimension){
+        if (wCheckDimension!=pZKnState->pZKnGraph->wVertexCount || wCheckDimension!=wPermutedGraphDimension){
             free(pbUnpackedMatrix);
             free(pbUnpackedPermutedGraphMatrix);
             *pbErrorReason=ERROR_REASON_CHEATING;
@@ -1963,7 +1964,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             return ERROR_SYSTEM;
         }
         //Checking dimensions are the same everywhere
-        if (wCheckDimension!=pZKnState->pZKnGraph->wVerticeCount || wCheckDimension!=wPermutedGraphDimension){
+        if (wCheckDimension!=pZKnState->pZKnGraph->wVertexCount || wCheckDimension!=wPermutedGraphDimension){
             free(pbUnpackedMatrix);
             free(pbUnpackedPermutedGraphMatrix);
             *pbErrorReason=ERROR_REASON_CHEATING;
@@ -2094,7 +2095,7 @@ uint8_t* pbRevealData, uint32_t dwRevealDataSize, uint8_t* pbErrorReason){
             return ERROR_SYSTEM;
         }
         //Checking dimensions are the same everywhere
-        if (wCheckDimension!=pZKnState->pZKnGraph->wVerticeCount || wCheckDimension!=wPermutedGraphDimension){
+        if (wCheckDimension!=pZKnState->pZKnGraph->wVertexCount || wCheckDimension!=wPermutedGraphDimension){
             free(pbUnpackedMatrix);
             free(pbUnpackedPermutedGraphMatrix);
             *pbErrorReason=ERROR_REASON_CHEATING;

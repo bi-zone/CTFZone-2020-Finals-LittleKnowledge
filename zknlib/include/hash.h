@@ -1,3 +1,8 @@
+/*
+libzkn - cryptoapi definitions 
+Authors:
+    Innokentii Sennovskii (i.sennovskiy@bi.zone)
+*/
 #include <sys/types.h>
 #define SHA256_NAME "sha256"
 #define SHA256_SIZE 32

@@ -1,7 +1,0 @@
-version: "3"
-services:
-    team_service:
-        image: 100.100.50.20:5043/littleknowledge/team_service
-        restart: always
-        ports:
-            - "666:1337"

@@ -1,3 +1,8 @@
+/*
+libzkn - main structures, definitions and exports 
+Authors:
+    Innokentii Sennovskii (i.sennovskiy@bi.zone)
+*/
 #ifndef zkn_h__
 #define zkn_h__
 #define DLL_PUBLIC __attribute__ ((visibility ("default")))
@@ -15,7 +20,7 @@
 
 typedef struct __GRAPH{
   uint32_t dwMatrixSize;
-  uint16_t wVerticeCount;
+  uint16_t wVertexCount;
   uint8_t* pbGraphData;
 }GRAPH, *PGRAPH;
 
@@ -33,7 +38,7 @@ typedef union{
 typedef struct __ZKN_STATE{
   PGRAPH pZKnGraph;
   uint8_t* pbFLAG;
-  uint16_t wDefaultVerticeCount;
+  uint16_t wDefaultVertexCount;
   uint8_t bCheckCount;
   COMMITMENT_ALGORITHMS supportedAlgorithms;
   uint8_t simulationDisabled:1;
@@ -169,7 +174,7 @@ typedef struct __SINGLE_PROOF{
 
 typedef struct __INITIAL_SETTING_PACKET{
   uint8_t RANDOM_R[RANDOM_R_SIZE];
-  uint16_t wVerticeCount;
+  uint16_t wVertexCount;
 }INITIAL_SETTING_PACKET, *PINITIAL_SETTING_PACKET;
 
 typedef struct __FULL_KNOWLEDGE_FOR_STORAGE
@@ -189,7 +194,7 @@ DLL_PUBLIC uint16_t getDesiredVerticeCountFromInitialSettingPacket(uint8_t* pbIn
 DLL_PUBLIC PGRAPH_SET_PACKET createGraphSetPacket(PFULL_KNOWLEDGE pFullKnowledge,uint8_t* pbRANDOM_R, char* psbFLAG, out uint32_t* pdwGraphSetPacketSize);
 DLL_PUBLIC uint8_t* createPKCSSignature(uint8_t* pbData,uint32_t dwDataSize,uint32_t dwDesiredSignatureSize);
 DLL_PUBLIC uint32_t updateZKnGraph(PZKN_STATE pZKNState,PGRAPH_SET_PACKET pGraphSetPacket, uint32_t dwPacketSize, uint8_t* pbDecryptedSignature, uint32_t dsSize, uint8_t* pRANDOMR);
-DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVerticeCount);
+DLL_PUBLIC PFULL_KNOWLEDGE createFullKnowledgeForServer(uint16_t wVertexCount);
 DLL_PUBLIC void freeFullKnowledgeForServer(PFULL_KNOWLEDGE pFullKnowledge);
 DLL_PUBLIC uint8_t* packFullKnowledgeForStorage(PFULL_KNOWLEDGE pFullKnowledge, out uint32_t* pdwDataSize);
 DLL_PUBLIC PFULL_KNOWLEDGE unpackFullKnowledgeFromStorage(uint8_t* pbPackedFullKnowledge, uint32_t dwPackedFullKnowledgeSize);
